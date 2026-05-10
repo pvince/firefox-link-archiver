@@ -245,34 +245,56 @@ async function updateStatus(): Promise<void> {
 
 async function updateLogs(): Promise<void> {
   const logs = await storage.getDebugLogs();
+  elements.logsContainer.textContent = '';
 
   if (logs.length === 0) {
-    elements.logsContainer.innerHTML =
-      '<div style="color: #999; text-align: center;">No logs yet</div>';
+    const empty = document.createElement('div');
+    empty.style.color = '#999';
+    empty.style.textAlign = 'center';
+    empty.textContent = 'No logs yet';
+    elements.logsContainer.appendChild(empty);
     return;
   }
 
-  const html = logs
-    .slice(-20) // Show last 20 entries
-    .reverse() // Show newest first
-    .map((log) => {
-      const time = new Date(log.timestamp).toLocaleTimeString();
-      return `<div class="log-entry ${log.level.toLowerCase()}">
-        <div>
-          <span class="log-time">${time}</span>
-          <span class="log-level ${log.level.toLowerCase()}">${log.level}</span>
-          <span>${log.message}</span>
-        </div>
-        ${
-          log.data
-            ? `<div style="color: #666; margin-top: 4px; font-size: 11px;">${JSON.stringify(log.data)}</div>`
-            : ''
-        }
-      </div>`;
-    })
-    .join('');
+  const fragment = document.createDocumentFragment();
+  logs
+    .slice(-20)
+    .reverse()
+    .forEach((log) => {
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${log.level.toLowerCase()}`;
 
-  elements.logsContainer.innerHTML = html;
+      const row = document.createElement('div');
+
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'log-time';
+      timeSpan.textContent = new Date(log.timestamp).toLocaleTimeString();
+
+      const levelSpan = document.createElement('span');
+      levelSpan.className = `log-level ${log.level.toLowerCase()}`;
+      levelSpan.textContent = log.level;
+
+      const msgSpan = document.createElement('span');
+      msgSpan.textContent = log.message;
+
+      row.appendChild(timeSpan);
+      row.appendChild(levelSpan);
+      row.appendChild(msgSpan);
+      entry.appendChild(row);
+
+      if (log.data) {
+        const dataDiv = document.createElement('div');
+        dataDiv.style.color = '#666';
+        dataDiv.style.marginTop = '4px';
+        dataDiv.style.fontSize = '11px';
+        dataDiv.textContent = JSON.stringify(log.data);
+        entry.appendChild(dataDiv);
+      }
+
+      fragment.appendChild(entry);
+    });
+
+  elements.logsContainer.appendChild(fragment);
 }
 
 async function syncNow(): Promise<void> {
