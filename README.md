@@ -51,6 +51,23 @@ npm run build
 3. Enable "Remote Debugging" in settings
 4. Use Firefox Desktop to connect and load the extension
 
+> **Note:** "Install Add-on from File" (`about:addons`) always rejects unsigned XPIs with a "corrupt" error on standard Firefox — this is expected. Use `about:debugging` for development, or sign the XPI for permanent installation.
+
+### Installing a Signed XPI on Android
+
+Signing is required for permanent installation on Firefox for Android (non-Nightly):
+
+1. Get API credentials from [addons.mozilla.org/developers](https://addons.mozilla.org/developers/)
+2. Sign and package:
+```bash
+npm run package
+npx web-ext sign --api-key YOUR_KEY --api-secret YOUR_SECRET --source-dir .
+```
+3. Host the signed `.xpi` at any reachable URL (GitHub releases, local server, etc.)
+4. Open that URL in Firefox for Android — it will prompt to install
+
+Alternatively, publish the XPI to an [AMO Custom Collection](https://support.mozilla.org/kb/extended-add-on-support-firefox-android) and point Firefox for Android to it via Settings → Add-ons.
+
 ## Configuration
 
 1. Click the extension icon → "Open Settings"
@@ -97,6 +114,49 @@ The extension will begin syncing on next browser activity.
 3. View recent activity (last 20 entries)
 4. Logs include collection, queueing, and submission events
 5. Sensitive data (URLs, credentials) is redacted in logs
+
+## Build Instructions for AMO Reviewers
+
+This section provides the information required to reproduce the XPI submitted to addons.mozilla.org.
+
+### Environment
+
+The extension builds on **Linux, macOS, or Windows**. The default AMO reviewer environment (Ubuntu 24.04 LTS, ARM64, Node 24, npm 11) is fully compatible.
+
+| Tool | Required version | Download |
+|------|-----------------|----------|
+| Node.js | 18 or later (tested on 24) | https://nodejs.org/ |
+| npm | 9 or later (bundled with Node) | https://nodejs.org/ |
+
+No other globally installed tools are needed. All build tooling (`esbuild`, `typescript`, `archiver`) is installed locally via npm.
+
+### Reproduce the XPI
+
+```bash
+# 1. Install dependencies (use the lockfile for exact versions)
+npm ci
+
+# 2. Build and package — produces archivebox-autosync.xpi
+npm run package
+```
+
+The `npm run package` command:
+1. Compiles TypeScript source in `src/` with esbuild into `dist/`
+2. Zips `manifest.json`, `dist/`, HTML pages, and icon assets into `archivebox-autosync.xpi`
+3. Validates the XPI structure
+
+The resulting `archivebox-autosync.xpi` should be byte-for-byte comparable (modulo ZIP timestamps) to the submitted file. Use a diff tool on the extracted `dist/*.js` bundles to verify.
+
+### Source layout
+
+- `src/background/` — background script entry point
+- `src/archivebox/` — ArchiveBox HTTP client and auth
+- `src/collectors/` — history and bookmark collectors
+- `src/shared/` — storage, queue, blocklist, logging, shared types
+- `src/options/` — options page TypeScript and HTML
+- `src/popup/` — popup TypeScript and HTML
+- `build.cjs` — esbuild build script (CommonJS, run by Node directly)
+- `scripts/package.js` — XPI packaging and validation script
 
 ## Development
 

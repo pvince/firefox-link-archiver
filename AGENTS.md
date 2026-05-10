@@ -11,6 +11,11 @@ Support desktop Firefox and Firefox for Android unless a task is explicitly desk
 - Firefox for Android does not support `history`, `bookmarks`, `menus`, `commands`, `sidebarAction`, or `windows`. Never make those APIs part of the required startup or install path for Android.
 - If a feature needs a desktop-only API, isolate it behind capability checks and keep the Android path installable and understandable.
 - Prefer Manifest V3-compatible, event-driven background logic. Keep listeners at top level, persist state in storage, and use alarms instead of relying on long-lived timers or persistent background pages.
+- Firefox MV3 uses `background.scripts` (array), **not** `background.service_worker`. The `service_worker` key is Chrome-only and will break loading in Firefox. Never change `background.scripts` to `background.service_worker`.
+- `npm test` requires `jest-environment-jsdom` which is not currently installed. Use `npm run build` and `npm run typecheck` as the reliable validation path until the Jest environment is fixed.
+- The packaging script (`npm run package`) auto-validates the XPI structure after creation by reading the ZIP central directory in pure Node.js. Do not replace this with shell `find`/`unzip` calls — they are not cross-platform on Windows.
+- Unsigned XPIs install only via `about:debugging`. The "Install Add-on from File" path in `about:addons` requires Mozilla signing and will always show a corruption error for unsigned builds. This is expected Firefox behavior, not a packaging bug.
+- Installing on Firefox for Android requires either a signed XPI hosted at a reachable URL, or an AMO custom collection. The `about:debugging` remote USB flow also works for development.
 
 ## ArchiveBox Integration
 
