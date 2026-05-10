@@ -168,31 +168,44 @@ function formatTimeDiff(ms: number): string {
 }
 
 async function openSettings(): Promise<void> {
-  await browser.runtime.openOptionsPage();
-  window.close();
+  try {
+    const url = browser.runtime.getURL('src/options/index.html');
+    await browser.tabs.create({ url });
+    window.close();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    showStatus(`✗ Error opening settings: ${message}`, 'error');
+  }
 }
 
 async function initialize(): Promise<void> {
-  elements = getElements();
+  try {
+    elements = getElements();
 
-  // Try to auto-fill current tab URL
-  await autoFillCurrentTab();
+    // Try to auto-fill current tab URL
+    await autoFillCurrentTab();
 
-  // Update status
-  await updateStatus();
+    // Update status
+    await updateStatus();
 
-  // Event listeners
-  elements.submitBtn.addEventListener('click', submitUrls);
-  elements.settingsBtn.addEventListener('click', openSettings);
+    // Event listeners
+    elements.submitBtn.addEventListener('click', submitUrls);
+    elements.settingsBtn.addEventListener('click', openSettings);
 
-  // Allow Enter key for submission (Shift+Enter for new line)
-  elements.urlInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && e.ctrlKey) {
-      submitUrls();
-    }
-  });
+    // Allow Enter key for submission (Shift+Enter for new line)
+    elements.urlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.ctrlKey) {
+        submitUrls();
+      }
+    });
 
-  await logger.info('Popup initialized');
+    console.log('✅ Popup initialized successfully');
+    await logger.info('Popup initialized');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('❌ Popup initialization error:', message, err);
+    showStatus('✗ Initialization error - check console', 'error');
+  }
 }
 
 // Initialize when DOM is ready

@@ -8,6 +8,40 @@ import { AuthError, NetworkError } from '../shared/types';
 
 export class AuthManager {
   /**
+   * Fetch the login page and extract the CSRF token via cookie
+   * Django sets a csrftoken cookie on GET which matches the form field value
+   */
+  private async getCsrfToken(loginUrl: string, baseUrl: string): Promise<string> {
+    const response = await fetch(loginUrl, {
+      method: 'GET',
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new NetworkError(`Failed to load login page: ${response.status}`);
+    }
+
+    // Prefer reading the csrftoken cookie that Django sets on GET
+    const cookies = await browser.cookies.getAll({ url: baseUrl, name: 'csrftoken' });
+    if (cookies && cookies.length > 0) {
+      return cookies[0].value;
+    }
+
+    // Fallback: parse the hidden input from the HTML
+    const html = await response.text();
+    const patterns = [
+      /name="csrfmiddlewaretoken"\s+value="([^"]+)"/,
+      /value="([^"]+)"\s+name="csrfmiddlewaretoken"/,
+      /"csrfmiddlewaretoken"[^>]+value="([^"]+)"/,
+    ];
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      if (match && match[1]) return match[1];
+    }
+
+    throw new AuthError('Could not find CSRF token on login page');
+  }
+
+  /**
    * Attempt to login with credentials and return session cookie
    */
   async login(
@@ -17,45 +51,54 @@ export class AuthManager {
   ): Promise<{ cookie: string }> {
     const loginUrl = `${url}/admin/login/`;
 
-    const formData = new URLSearchParams();
-    formData.append('username', username);
-    formData.append('password', password);
-    formData.append('csrfmiddlewaretoken', ''); // CSRF exempt in v0.7.3
-
     try {
+      // Step 1: GET the login page to obtain the CSRF token
+      const csrfToken = await this.getCsrfToken(loginUrl, url);
+
+      // Step 2: POST credentials with the CSRF token
+      const formData = new URLSearchParams();
+      formData.append('username', username);
+      formData.append('password', password);
+      formData.append('csrfmiddlewaretoken', csrfToken);
+      formData.append('next', '/');
+
       const response = await fetch(loginUrl, {
         method: 'POST',
         body: formData.toString(),
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
+          'Referer': loginUrl,
         },
-        credentials: 'include', // Include cookies in request
+        credentials: 'include',
       });
 
-      if (response.status === 401 || response.status === 403) {
+      // Django redirects away from /admin/login/ on successful login.
+      // If we're still on the login page, credentials were wrong.
+      const finalUrl = response.url;
+      const stillOnLogin = finalUrl.includes('/admin/login/');
+
+      if (response.status === 403 || (response.ok && stillOnLogin)) {
         throw new AuthError('Invalid username or password');
       }
 
-      if (!response.ok) {
+      if (!response.ok && response.status !== 302) {
         throw new AuthError(
           `Login failed with status ${response.status}: ${response.statusText}`
         );
       }
 
-      // Extract session cookie from response headers
-      const setCookieHeader = response.headers.get('set-cookie');
-      if (!setCookieHeader) {
-        throw new AuthError('No session cookie received from server');
+      // Read the sessionid cookie that the browser stored automatically
+      // (set-cookie header is not directly accessible via fetch in extensions)
+      const cookies = await browser.cookies.getAll({
+        url,
+        name: 'sessionid',
+      });
+
+      if (!cookies || cookies.length === 0) {
+        throw new AuthError('Login appeared to succeed but no session cookie was set');
       }
 
-      // Parse sessionid from Set-Cookie header
-      // Format: sessionid=abc123; Path=/; HttpOnly; SameSite=Lax
-      const sessionMatch = setCookieHeader.match(/sessionid=([^;]+)/);
-      if (!sessionMatch || !sessionMatch[1]) {
-        throw new AuthError('Failed to extract session cookie');
-      }
-
-      const sessionCookie = `sessionid=${sessionMatch[1]}`;
+      const sessionCookie = `sessionid=${cookies[0].value}`;
 
       await logger.info('Login successful', {
         url,

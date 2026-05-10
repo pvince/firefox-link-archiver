@@ -8,7 +8,8 @@
     "history",
     "bookmarks",
     "alarms",
-    "tabs"
+    "tabs",
+    "cookies"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -22,8 +23,7 @@
     "open_in_tab": true
   },
   "background": {
-    "service_worker": "dist/background/index.js",
-    "type": "module"
+    "scripts": ["dist/background/index.js"]
   },
   "icons": {
     "16": "src/assets/icon-16.png",

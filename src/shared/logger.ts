@@ -7,14 +7,6 @@ import { storage } from './storage';
 
 type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
-const REDACT_PATTERNS = [
-  { pattern: /https?:\/\/[^\s]+/g, replacement: '[URL]' },
-  { pattern: /password[:\s=]+[^\s,}]+/gi, replacement: 'password=***' },
-  { pattern: /password[:\s=]+"[^"]+"/gi, replacement: 'password="***"' },
-  { pattern: /sessionCookie[:\s=]+[^\s,}]+/gi, replacement: 'sessionCookie=***' },
-  { pattern: /sessionCookie[:\s=]+"[^"]+"/gi, replacement: 'sessionCookie="***"' },
-];
-
 export class Logger {
   private isDev: boolean = false;
 
@@ -25,25 +17,33 @@ export class Logger {
       typeof (globalThis as any).browser !== 'undefined';
   }
 
+  private redactValue(value: unknown): unknown {
+    if (typeof value === 'string') {
+      let s = value;
+      s = s.replace(/https?:\/\/[^\s"']+/g, (url) => url.substring(0, 20) + '...');
+      s = s.replace(/password[:\s=]+\S+/gi, 'password=***');
+      s = s.replace(/sessionCookie[:\s=]+\S+/gi, 'sessionCookie=***');
+      return s;
+    }
+    if (Array.isArray(value)) return value.map((v) => this.redactValue(v));
+    if (value !== null && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).map(([k, v]) => {
+          if (/password|session|cookie|token/i.test(k)) return [k, '***'];
+          return [k, this.redactValue(v)];
+        })
+      );
+    }
+    return value;
+  }
+
   private redactSensitiveData(
     data: string | Record<string, unknown>
   ): string {
-    let str = typeof data === 'string' ? data : JSON.stringify(data);
-
-    for (const { pattern, replacement } of REDACT_PATTERNS) {
-      str = str.replace(pattern, replacement);
+    if (typeof data === 'string') {
+      return this.redactValue(data) as string;
     }
-
-    // Redact first 20 chars of URLs
-    str = str.replace(/\[URL\]/g, (match) => {
-      const match2 = str.match(/https?:\/\/[^\s]+/);
-      if (match2) {
-        return match2[0].substring(0, 20) + '...';
-      }
-      return match;
-    });
-
-    return str;
+    return JSON.stringify(this.redactValue(data));
   }
 
   private async logToStorage(
@@ -55,7 +55,7 @@ export class Logger {
       timestamp: Date.now(),
       level,
       message,
-      data: data ? JSON.parse(this.redactSensitiveData(data)) : undefined,
+      data: data ? (this.redactValue(data) as Record<string, unknown>) : undefined,
     };
 
     try {
