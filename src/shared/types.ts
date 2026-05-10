@@ -8,6 +8,7 @@ export interface Config {
   sessionCookie?: string;
   lastLogin?: number;
   batchInterval: number; // milliseconds, default 10000
+  blocklistPatterns: string[];
 }
 
 export interface QueueItem {

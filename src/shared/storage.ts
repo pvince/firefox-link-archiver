@@ -16,6 +16,7 @@ const DEFAULT_CONFIG: Config = {
   archiveBoxUrl: '',
   username: '',
   batchInterval: 10000,
+  blocklistPatterns: [],
 };
 
 const DEFAULT_SYNC_STATE: SyncState = {

@@ -4,6 +4,7 @@
 
 import { QueueItem } from './types';
 import { storage } from './storage';
+import { filterUrlsByBlocklist } from './blocklist';
 
 const MAX_RETRIES = 10;
 const BASE_RETRY_DELAY_MS = 2000; // 2 seconds
@@ -17,7 +18,15 @@ export class QueueManager {
     if (!urls || urls.length === 0) {
       return;
     }
-    await storage.addToQueue(urls, tags);
+
+    const config = await storage.getConfig();
+    const { allowedUrls } = filterUrlsByBlocklist(urls, config);
+
+    if (allowedUrls.length === 0) {
+      return;
+    }
+
+    await storage.addToQueue(allowedUrls, tags);
   }
 
   /**

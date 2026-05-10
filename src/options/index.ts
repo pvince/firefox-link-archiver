@@ -6,9 +6,12 @@ import { storage } from '../shared/storage';
 import { queueManager } from '../shared/queue';
 import { authManager } from '../archivebox/auth';
 import { logger } from '../shared/logger';
+import { buildArchiveBoxBlockPattern } from '../shared/blocklist';
 
 interface OptionsPageElements {
   archiveBoxUrl: HTMLInputElement;
+  blocklistPatterns: HTMLTextAreaElement;
+  blocklistValidation: HTMLDivElement;
   username: HTMLInputElement;
   password: HTMLInputElement;
   testBtn: HTMLButtonElement;
@@ -28,6 +31,12 @@ function getElements(): OptionsPageElements {
     archiveBoxUrl: document.getElementById(
       'archiveBoxUrl'
     ) as HTMLInputElement,
+    blocklistPatterns: document.getElementById(
+      'blocklistPatterns'
+    ) as HTMLTextAreaElement,
+    blocklistValidation: document.getElementById(
+      'blocklistValidation'
+    ) as HTMLDivElement,
     username: document.getElementById('username') as HTMLInputElement,
     password: document.getElementById('password') as HTMLInputElement,
     testBtn: document.getElementById('testBtn') as HTMLButtonElement,
@@ -42,6 +51,53 @@ function getElements(): OptionsPageElements {
   };
 }
 
+function parseBlocklistPatterns(rawValue: string): string[] {
+  return rawValue
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+function validateBlocklistPatterns(
+  rawValue: string
+): { valid: true } | { valid: false; message: string } {
+  const lines = rawValue.split('\n');
+  const invalidLines: string[] = [];
+
+  lines.forEach((line, index) => {
+    const pattern = line.trim();
+    if (!pattern) {
+      return;
+    }
+
+    try {
+      new RegExp(pattern);
+    } catch (_err) {
+      invalidLines.push(`${index + 1}: ${pattern}`);
+    }
+  });
+
+  if (invalidLines.length === 0) {
+    return { valid: true };
+  }
+
+  return {
+    valid: false,
+    message: `Invalid regex on line(s): ${invalidLines.join(', ')}`,
+  };
+}
+
+function showBlocklistValidation(message: string): void {
+  if (!message) {
+    elements.blocklistValidation.textContent = '';
+    elements.blocklistValidation.classList.remove('visible');
+    return;
+  }
+
+  elements.blocklistValidation.textContent = message;
+  elements.blocklistValidation.classList.add('visible');
+}
+
 function showStatus(
   message: string,
   type: 'success' | 'error' | 'loading'
@@ -53,6 +109,13 @@ function showStatus(
 async function loadConfig(): Promise<void> {
   const config = await storage.getConfig();
   elements.archiveBoxUrl.value = config.archiveBoxUrl || '';
+  if (config.blocklistPatterns.length > 0) {
+    elements.blocklistPatterns.value = config.blocklistPatterns.join('\n');
+  } else {
+    const defaultArchivePattern = buildArchiveBoxBlockPattern(config.archiveBoxUrl);
+    elements.blocklistPatterns.value = defaultArchivePattern || '';
+  }
+  showBlocklistValidation('');
   elements.username.value = config.username || '';
   // Don't load password for security reasons
   testPassed = false;
@@ -106,6 +169,23 @@ async function saveConfig(): Promise<void> {
   const url = elements.archiveBoxUrl.value.trim();
   const username = elements.username.value.trim();
   const password = elements.password.value.trim();
+  const blocklistValidation = validateBlocklistPatterns(
+    elements.blocklistPatterns.value
+  );
+
+  if (!blocklistValidation.valid) {
+    showBlocklistValidation(blocklistValidation.message);
+    showStatus('Please fix blocklist regex errors', 'error');
+    return;
+  }
+
+  showBlocklistValidation('');
+  const blocklistPatterns = parseBlocklistPatterns(elements.blocklistPatterns.value);
+  const archiveBoxPattern = buildArchiveBoxBlockPattern(url);
+  if (archiveBoxPattern && !blocklistPatterns.includes(archiveBoxPattern)) {
+    blocklistPatterns.unshift(archiveBoxPattern);
+    elements.blocklistPatterns.value = blocklistPatterns.join('\n');
+  }
 
   if (!url || !username) {
     showStatus('Please fill in required fields', 'error');
@@ -119,6 +199,7 @@ async function saveConfig(): Promise<void> {
     await storage.setConfig({
       archiveBoxUrl: url,
       username,
+      blocklistPatterns,
       // Note: Password is not stored, only session cookie is stored after login
       // For future versions, consider using browser.storage.sync with encryption
     });

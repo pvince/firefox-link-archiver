@@ -151,4 +151,46 @@ describe('QueueManager', () => {
     const size = await queueManager.getQueueSize();
     expect(size).toBe(0);
   });
+
+  test('should block URLs that match user regex blocklist patterns', async () => {
+    await storage.setConfig({
+      blocklistPatterns: ['^https://blocked\\.example\\.com'],
+    });
+
+    await queueManager.enqueue([
+      'https://blocked.example.com/path',
+      'https://allowed.example.com/path',
+    ]);
+
+    const queue = await storage.getQueue();
+    expect(queue).toHaveLength(1);
+    expect(queue[0].urls).toEqual(['https://allowed.example.com/path']);
+  });
+
+  test('should block ArchiveBox URL by default', async () => {
+    await storage.setConfig({
+      archiveBoxUrl: 'https://archive.example.com',
+      blocklistPatterns: [],
+    });
+
+    await queueManager.enqueue([
+      'https://archive.example.com/add/',
+      'https://allowed.example.com/path',
+    ]);
+
+    const queue = await storage.getQueue();
+    expect(queue).toHaveLength(1);
+    expect(queue[0].urls).toEqual(['https://allowed.example.com/path']);
+  });
+
+  test('should skip enqueue when all URLs are blocked', async () => {
+    await storage.setConfig({
+      blocklistPatterns: ['^https://blocked\\.example\\.com'],
+    });
+
+    await queueManager.enqueue(['https://blocked.example.com/path']);
+
+    const size = await queueManager.getQueueSize();
+    expect(size).toBe(0);
+  });
 });

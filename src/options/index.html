@@ -84,11 +84,53 @@
         transition: border-color 0.2s;
       }
 
+      textarea {
+        width: 100%;
+        min-height: 110px;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-size: 14px;
+        font-family: 'Courier New', monospace;
+        line-height: 1.4;
+        resize: vertical;
+        transition: border-color 0.2s;
+      }
+
       input[type='text']:focus,
       input[type='password']:focus {
         outline: none;
         border-color: #667eea;
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      }
+
+      textarea:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      }
+
+      .hint {
+        margin-top: 6px;
+        color: #777;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .validation-error {
+        display: none;
+        margin-top: 8px;
+        color: #c62828;
+        background: #ffcdd2;
+        border-left: 4px solid #c62828;
+        border-radius: 4px;
+        padding: 8px;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .validation-error.visible {
+        display: block;
       }
 
       .button-group {
@@ -301,6 +343,19 @@
               id="archiveBoxUrl"
               placeholder="e.g., http://localhost:8000"
             />
+          </div>
+
+          <div class="form-group">
+            <label for="blocklistPatterns">URL Blocklist (Regex)</label>
+            <textarea
+              id="blocklistPatterns"
+              placeholder="One regex per line"
+            ></textarea>
+            <div class="hint">
+              One regex per line. The configured ArchiveBox URL is auto-added to
+              the blocklist by default.
+            </div>
+            <div id="blocklistValidation" class="validation-error"></div>
           </div>
 
           <div class="form-group">

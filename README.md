@@ -56,8 +56,20 @@ npm run build
 1. Click the extension icon → "Open Settings"
 2. Enter your ArchiveBox instance URL (e.g., `http://localhost:8000`)
 3. Enter your ArchiveBox username and password
-4. Click "Test Connection" to validate
-5. Click "Save"
+4. Configure URL Blocklist regex patterns (one pattern per line)
+5. Click "Test Connection" to validate
+6. Click "Save"
+
+The extension automatically adds the configured ArchiveBox URL to the effective
+blocklist by default so self-referential ArchiveBox pages are not re-submitted.
+
+Example blocklist patterns:
+
+```text
+^https://archive\.example\.com(?:/.*)?$
+^https://(www\.)?youtube\.com/.*
+\.(pdf|zip)$
+```
 
 The extension will begin syncing on next browser activity.
 
