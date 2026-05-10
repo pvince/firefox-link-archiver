@@ -1,0 +1,148 @@
+/**
+ * ArchiveBox HTTP client for URL submission
+ */
+
+import { authManager } from './auth';
+import { logger } from '../shared/logger';
+import {
+  AuthError,
+  NetworkError,
+  ServerError,
+  ClientError,
+} from '../shared/types';
+
+export class ArchiveBoxClient {
+  /**
+   * Submit URLs to ArchiveBox via form submission
+   */
+  async submitUrls(
+    archiveBoxUrl: string,
+    urls: string[],
+    tags?: string[]
+  ): Promise<{ success: boolean }> {
+    if (!urls || urls.length === 0) {
+      return { success: true };
+    }
+
+    // Normalize and dedupe URLs
+    const normalizedUrls = this.dedupeUrls(
+      urls.map((url) => this.normalizeUrl(url))
+    );
+
+    // Ensure authenticated
+    await authManager.ensureAuthenticated();
+
+    // Get session cookie
+    const sessionCookie = await authManager.getSessionCookie();
+
+    // Format URLs as multiline string
+    const urlString = normalizedUrls.join('\n');
+
+    // Build form data
+    const formData = new URLSearchParams();
+    formData.append('url', urlString);
+    formData.append('depth', '0');
+    formData.append('parser', 'auto');
+    if (tags && tags.length > 0) {
+      formData.append('tag', tags.join(','));
+    }
+
+    const submitUrl = `${archiveBoxUrl}/add/`;
+
+    try {
+      await logger.info('Submitting URLs to ArchiveBox', {
+        urlCount: normalizedUrls.length,
+        tags: tags,
+      });
+
+      const response = await fetch(submitUrl, {
+        method: 'POST',
+        body: formData.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Cookie: sessionCookie,
+        },
+        credentials: 'include',
+      });
+
+      // Handle authentication errors
+      if (response.status === 401 || response.status === 403) {
+        await logger.warn('Authentication failed, session may have expired');
+        throw new AuthError('Session expired or invalid');
+      }
+
+      // Handle server errors
+      if (response.status >= 500 && response.status < 600) {
+        throw new ServerError(
+          `ArchiveBox server error: ${response.status} ${response.statusText}`
+        );
+      }
+
+      // Handle client errors (except auth)
+      if (response.status >= 400 && response.status < 500) {
+        throw new ClientError(
+          `Client error: ${response.status} ${response.statusText}`
+        );
+      }
+
+      // Success (200-399)
+      if (!response.ok) {
+        throw new Error(`Unexpected status: ${response.status}`);
+      }
+
+      await logger.info('URLs submitted successfully', {
+        urlCount: normalizedUrls.length,
+      });
+
+      return { success: true };
+    } catch (err) {
+      if (
+        err instanceof AuthError ||
+        err instanceof ServerError ||
+        err instanceof ClientError
+      ) {
+        throw err;
+      }
+
+      if (err instanceof TypeError) {
+        throw new NetworkError(`Network error: ${err.message}`);
+      }
+
+      throw new ServerError(`Submission failed: ${err}`);
+    }
+  }
+
+  /**
+   * Normalize URL: lowercase, trim, remove fragment
+   */
+  private normalizeUrl(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      // Remove fragment
+      urlObj.hash = '';
+      return urlObj.toString().toLowerCase();
+    } catch (err) {
+      // If URL is invalid, return original trimmed
+      return url.trim().toLowerCase();
+    }
+  }
+
+  /**
+   * Remove duplicate URLs, maintain order
+   */
+  private dedupeUrls(urls: string[]): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+
+    for (const url of urls) {
+      if (!seen.has(url)) {
+        seen.add(url);
+        result.push(url);
+      }
+    }
+
+    return result;
+  }
+}
+
+export const archiveBoxClient = new ArchiveBoxClient();

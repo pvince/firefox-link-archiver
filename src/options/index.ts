@@ -1,0 +1,263 @@
+/**
+ * Options page logic
+ */
+
+import { storage } from '../shared/storage';
+import { queueManager } from '../shared/queue';
+import { authManager } from '../archivebox/auth';
+import { logger } from '../shared/logger';
+
+interface OptionsPageElements {
+  archiveBoxUrl: HTMLInputElement;
+  username: HTMLInputElement;
+  password: HTMLInputElement;
+  testBtn: HTMLButtonElement;
+  saveBtn: HTMLButtonElement;
+  syncBtn: HTMLButtonElement;
+  connectionStatus: HTMLDivElement;
+  queueSize: HTMLSpanElement;
+  lastSync: HTMLSpanElement;
+  logsContainer: HTMLDivElement;
+}
+
+let elements: OptionsPageElements;
+let testPassed = false;
+
+function getElements(): OptionsPageElements {
+  return {
+    archiveBoxUrl: document.getElementById(
+      'archiveBoxUrl'
+    ) as HTMLInputElement,
+    username: document.getElementById('username') as HTMLInputElement,
+    password: document.getElementById('password') as HTMLInputElement,
+    testBtn: document.getElementById('testBtn') as HTMLButtonElement,
+    saveBtn: document.getElementById('saveBtn') as HTMLButtonElement,
+    syncBtn: document.getElementById('syncBtn') as HTMLButtonElement,
+    connectionStatus: document.getElementById(
+      'connectionStatus'
+    ) as HTMLDivElement,
+    queueSize: document.getElementById('queueSize') as HTMLSpanElement,
+    lastSync: document.getElementById('lastSync') as HTMLSpanElement,
+    logsContainer: document.getElementById('logsContainer') as HTMLDivElement,
+  };
+}
+
+function showStatus(
+  message: string,
+  type: 'success' | 'error' | 'loading'
+): void {
+  elements.connectionStatus.textContent = message;
+  elements.connectionStatus.className = `status ${type}`;
+}
+
+async function loadConfig(): Promise<void> {
+  const config = await storage.getConfig();
+  elements.archiveBoxUrl.value = config.archiveBoxUrl || '';
+  elements.username.value = config.username || '';
+  // Don't load password for security reasons
+  testPassed = false;
+  updateSaveButton();
+}
+
+async function testConnection(): Promise<void> {
+  const url = elements.archiveBoxUrl.value.trim();
+  const username = elements.username.value.trim();
+  const password = elements.password.value.trim();
+
+  if (!url || !username || !password) {
+    showStatus('Please fill in all fields', 'error');
+    return;
+  }
+
+  showStatus('Testing connection...', 'loading');
+  elements.testBtn.disabled = true;
+
+  try {
+    const result = await authManager.testCredentials(url, username, password);
+    if (result.success) {
+      showStatus('✓ Connection successful!', 'success');
+      testPassed = true;
+      updateSaveButton();
+    } else {
+      showStatus(`✗ Connection failed: ${result.error}`, 'error');
+      testPassed = false;
+      updateSaveButton();
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    showStatus(`✗ Error: ${message}`, 'error');
+    testPassed = false;
+    updateSaveButton();
+  } finally {
+    elements.testBtn.disabled = false;
+  }
+}
+
+function updateSaveButton(): void {
+  elements.saveBtn.disabled = !testPassed;
+}
+
+async function saveConfig(): Promise<void> {
+  if (!testPassed) {
+    showStatus('Please test connection first', 'error');
+    return;
+  }
+
+  const url = elements.archiveBoxUrl.value.trim();
+  const username = elements.username.value.trim();
+  const password = elements.password.value.trim();
+
+  if (!url || !username) {
+    showStatus('Please fill in required fields', 'error');
+    return;
+  }
+
+  elements.saveBtn.disabled = true;
+  showStatus('Saving...', 'loading');
+
+  try {
+    await storage.setConfig({
+      archiveBoxUrl: url,
+      username,
+      // Note: Password is not stored, only session cookie is stored after login
+      // For future versions, consider using browser.storage.sync with encryption
+    });
+
+    // Perform login to get session cookie
+    const result = await authManager.login(url, username, password);
+    await storage.setConfig({
+      sessionCookie: result.cookie,
+      lastLogin: Date.now(),
+    });
+
+    showStatus('✓ Configuration saved!', 'success');
+    elements.password.value = ''; // Clear password field
+
+    // Give user feedback before redirecting
+    setTimeout(() => {
+      updateStatus();
+    }, 1000);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    showStatus(`✗ Save failed: ${message}`, 'error');
+  } finally {
+    elements.saveBtn.disabled = !testPassed;
+  }
+}
+
+async function updateStatus(): Promise<void> {
+  const queueSize = await queueManager.getQueueSize();
+  elements.queueSize.textContent = String(queueSize);
+
+  const syncState = await storage.getSyncState();
+  if (syncState.lastHistorySync || syncState.lastBookmarksSync) {
+    const lastSync = Math.max(
+      syncState.lastHistorySync || 0,
+      syncState.lastBookmarksSync || 0
+    );
+    const ago = formatTimeDiff(Date.now() - lastSync);
+    elements.lastSync.textContent = `${ago} ago`;
+  } else {
+    elements.lastSync.textContent = 'Never';
+  }
+}
+
+async function updateLogs(): Promise<void> {
+  const logs = await storage.getDebugLogs();
+
+  if (logs.length === 0) {
+    elements.logsContainer.innerHTML =
+      '<div style="color: #999; text-align: center;">No logs yet</div>';
+    return;
+  }
+
+  const html = logs
+    .slice(-20) // Show last 20 entries
+    .reverse() // Show newest first
+    .map((log) => {
+      const time = new Date(log.timestamp).toLocaleTimeString();
+      return `<div class="log-entry ${log.level.toLowerCase()}">
+        <div>
+          <span class="log-time">${time}</span>
+          <span class="log-level ${log.level.toLowerCase()}">${log.level}</span>
+          <span>${log.message}</span>
+        </div>
+        ${
+          log.data
+            ? `<div style="color: #666; margin-top: 4px; font-size: 11px;">${JSON.stringify(log.data)}</div>`
+            : ''
+        }
+      </div>`;
+    })
+    .join('');
+
+  elements.logsContainer.innerHTML = html;
+}
+
+async function syncNow(): Promise<void> {
+  elements.syncBtn.disabled = true;
+  showStatus('Syncing...', 'loading');
+
+  try {
+    // Get background script and trigger sync
+    const bg = await browser.runtime.getBackgroundPage?.();
+    if (bg && typeof (bg as any).processSyncQueue === 'function') {
+      await (bg as any).processSyncQueue();
+      showStatus('✓ Sync completed!', 'success');
+    } else {
+      // Fallback: trigger via background script message
+      await browser.runtime.sendMessage({ action: 'syncQueue' });
+      showStatus('✓ Sync triggered!', 'success');
+    }
+
+    setTimeout(() => {
+      updateStatus();
+      updateLogs();
+    }, 1000);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    showStatus(`✗ Sync failed: ${message}`, 'error');
+  } finally {
+    elements.syncBtn.disabled = false;
+  }
+}
+
+function formatTimeDiff(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) return `${days}d`;
+  if (hours > 0) return `${hours}h`;
+  if (minutes > 0) return `${minutes}m`;
+  return `${seconds}s`;
+}
+
+async function initialize(): Promise<void> {
+  elements = getElements();
+
+  await loadConfig();
+  await updateStatus();
+  await updateLogs();
+
+  // Event listeners
+  elements.testBtn.addEventListener('click', testConnection);
+  elements.saveBtn.addEventListener('click', saveConfig);
+  elements.syncBtn.addEventListener('click', syncNow);
+
+  // Auto-update status every 5 seconds
+  setInterval(async () => {
+    await updateStatus();
+    await updateLogs();
+  }, 5000);
+
+  await logger.info('Options page loaded');
+}
+
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initialize);
+} else {
+  initialize();
+}

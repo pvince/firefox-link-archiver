@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ArchiveBox Auto-Sync</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        width: 350px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 0;
+        margin: 0;
+      }
+
+      .popup-container {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        overflow: hidden;
+      }
+
+      header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 15px;
+        text-align: center;
+      }
+
+      header h1 {
+        font-size: 18px;
+        margin: 0;
+      }
+
+      .content {
+        padding: 15px;
+      }
+
+      .section {
+        margin-bottom: 15px;
+      }
+
+      .section h2 {
+        font-size: 12px;
+        color: #999;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+        letter-spacing: 0.5px;
+      }
+
+      .form-group {
+        margin-bottom: 10px;
+      }
+
+      label {
+        display: block;
+        font-size: 12px;
+        color: #555;
+        margin-bottom: 4px;
+        font-weight: 500;
+      }
+
+      textarea,
+      input[type='text'] {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 12px;
+        font-family: inherit;
+        resize: vertical;
+      }
+
+      textarea:focus,
+      input[type='text']:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+      }
+
+      textarea {
+        min-height: 60px;
+        max-height: 100px;
+      }
+
+      .button-group {
+        display: flex;
+        gap: 8px;
+      }
+
+      button {
+        flex: 1;
+        padding: 8px 12px;
+        border: none;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .btn-submit {
+        background: #667eea;
+        color: white;
+      }
+
+      .btn-submit:hover {
+        background: #5568d3;
+      }
+
+      .btn-settings {
+        background: #f0f0f0;
+        color: #333;
+      }
+
+      .btn-settings:hover {
+        background: #e0e0e0;
+      }
+
+      .status {
+        margin-top: 8px;
+        padding: 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        display: none;
+      }
+
+      .status.success {
+        display: block;
+        background: #c8e6c9;
+        color: #2e7d32;
+        border-left: 3px solid #2e7d32;
+      }
+
+      .status.error {
+        display: block;
+        background: #ffcdd2;
+        color: #c62828;
+        border-left: 3px solid #c62828;
+      }
+
+      .status.info {
+        display: block;
+        background: #bbdefb;
+        color: #1565c0;
+        border-left: 3px solid #1565c0;
+      }
+
+      .quick-status {
+        background: #f5f5f5;
+        padding: 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      .quick-status-item {
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .quick-status-label {
+        color: #666;
+        font-weight: 500;
+      }
+
+      .quick-status-value {
+        color: #333;
+        font-weight: bold;
+      }
+
+      .quick-status-item.error .quick-status-value {
+        color: #c62828;
+      }
+
+      @media (max-width: 380px) {
+        body {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="popup-container">
+      <header>
+        <h1>📚 ArchiveBox Sync</h1>
+      </header>
+
+      <div class="content">
+        <!-- Quick Status Section -->
+        <div class="section">
+          <h2>Status</h2>
+          <div class="quick-status">
+            <div class="quick-status-item">
+              <span class="quick-status-label">Queued:</span>
+              <span class="quick-status-value" id="quickQueueSize">0</span>
+            </div>
+            <div class="quick-status-item">
+              <span class="quick-status-label">Last sync:</span>
+              <span class="quick-status-value" id="quickLastSync">Never</span>
+            </div>
+            <div
+              class="quick-status-item"
+              id="lastErrorContainer"
+              style="display: none;"
+            >
+              <span class="quick-status-label">Error:</span>
+              <span class="quick-status-value" id="lastError"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Manual Submission Section -->
+        <div class="section">
+          <h2>Submit URLs</h2>
+
+          <div class="form-group">
+            <label for="urlInput">URLs</label>
+            <textarea
+              id="urlInput"
+              placeholder="Paste URLs here (one per line)..."
+            ></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="tagsInput">Tags (optional)</label>
+            <input
+              type="text"
+              id="tagsInput"
+              placeholder="comma,separated,tags"
+            />
+          </div>
+
+          <div class="button-group">
+            <button class="btn-submit" id="submitBtn">Submit</button>
+            <button class="btn-settings" id="settingsBtn">Settings</button>
+          </div>
+
+          <div id="submissionStatus" class="status"></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="index.js"></script>
+  </body>
+</html>

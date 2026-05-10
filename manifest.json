@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "ArchiveBox Auto-Sync",
+  "version": "0.1.0",
+  "description": "Automatically sync browser history and bookmarks to ArchiveBox",
+  "permissions": [
+    "storage",
+    "history",
+    "bookmarks",
+    "alarms",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "ArchiveBox Auto-Sync"
+  },
+  "options_ui": {
+    "page": "src/options/index.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "dist/background/index.js",
+    "type": "module"
+  },
+  "icons": {
+    "16": "src/assets/icon-16.png",
+    "32": "src/assets/icon-32.png",
+    "48": "src/assets/icon-48.png",
+    "96": "src/assets/icon-96.png"
+  }
+}
