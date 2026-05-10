@@ -1,12 +1,13 @@
 # Dependencies
 node_modules/
-package-lock.json
 yarn.lock
 
 # Build output
 dist/
 *.crx
+*.xpi
 *.zip
+.xpi-validate/
 
 # IDE
 .vscode/

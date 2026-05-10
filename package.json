@@ -11,13 +11,16 @@
     "lint:fix": "eslint src/**/*.ts --fix",
     "test": "jest",
     "test:watch": "jest --watch",
-    "clean": "rm -rf dist && rm -rf *.crx"
+    "package": "node scripts/package.js",
+    "package-source": "node scripts/package-source.js",
+    "clean": "rm -rf dist && rm -rf *.crx && rm -rf *.xpi"
   },
   "devDependencies": {
     "@types/firefox-webext-browser": "^143.0.0",
     "@types/jest": "^29.5.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
+    "archiver": "^6.0.2",
     "esbuild": "^0.28.0",
     "eslint": "^8.0.0",
     "jest": "^29.5.0",
