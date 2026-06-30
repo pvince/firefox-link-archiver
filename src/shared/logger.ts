@@ -23,13 +23,17 @@ export class Logger {
       s = s.replace(/https?:\/\/[^\s"']+/g, (url) => url.substring(0, 20) + '...');
       s = s.replace(/password[:\s=]+\S+/gi, 'password=***');
       s = s.replace(/sessionCookie[:\s=]+\S+/gi, 'sessionCookie=***');
+      s = s.replace(/encryptedPassword[:\s=]+\S+/gi, 'encryptedPassword=***');
+      s = s.replace(/authorization[:\s=]+\S+/gi, 'authorization=***');
       return s;
     }
     if (Array.isArray(value)) return value.map((v) => this.redactValue(v));
     if (value !== null && typeof value === 'object') {
       return Object.fromEntries(
         Object.entries(value as Record<string, unknown>).map(([k, v]) => {
-          if (/password|session|cookie|token/i.test(k)) return [k, '***'];
+          if (/password|session|cookie|token|encrypted|secret|auth/i.test(k)) {
+            return [k, '***'];
+          }
           return [k, this.redactValue(v)];
         })
       );

@@ -2,13 +2,14 @@
  * Queue manager with exponential backoff retry logic
  */
 
-import { QueueItem } from './types';
+import { QueueItem, QueueItemStatus } from './types';
 import { storage } from './storage';
 import { filterUrlsByBlocklist } from './blocklist';
 
 const MAX_RETRIES = 10;
 const BASE_RETRY_DELAY_MS = 2000; // 2 seconds
 const MAX_RETRY_DELAY_MS = 3600000; // 1 hour
+const MAX_AUTH_BLOCK_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 export class QueueManager {
   /**
@@ -36,7 +37,13 @@ export class QueueManager {
     const queue = await storage.getQueue();
     const now = Date.now();
     const batch = queue
-      .filter((item) => item.nextRetryAt <= now)
+      .filter((item) => {
+        const status = item.status || QueueItemStatus.Pending;
+        if (status === QueueItemStatus.AuthBlocked || status === QueueItemStatus.Failed) {
+          return false;
+        }
+        return item.nextRetryAt <= now;
+      })
       .slice(0, maxSize);
     return batch;
   }
@@ -64,6 +71,7 @@ export class QueueManager {
 
     if (item.retries >= MAX_RETRIES) {
       // Dead-letter: discard after max retries
+      item.status = QueueItemStatus.Failed;
       await storage.removeFromQueue([id]);
     } else {
       // Calculate next retry time with exponential backoff
@@ -72,8 +80,58 @@ export class QueueManager {
         MAX_RETRY_DELAY_MS
       );
       item.nextRetryAt = Date.now() + delayMs;
+      item.status = QueueItemStatus.AwaitingRetry;
       await storage.updateQueueItem(id, item);
     }
+  }
+
+  async markAuthBlocked(id: string, error: string): Promise<void> {
+    const queue = await storage.getQueue();
+    const item = queue.find((i) => i.id === id);
+
+    if (!item) {
+      return;
+    }
+
+    item.status = QueueItemStatus.AuthBlocked;
+    item.lastError = error;
+    item.authBlockedAt = item.authBlockedAt || Date.now();
+    await storage.updateQueueItem(id, item);
+  }
+
+  async getAuthBlockedItems(): Promise<QueueItem[]> {
+    const queue = await storage.getQueue();
+    return queue.filter((item) => item.status === QueueItemStatus.AuthBlocked);
+  }
+
+  async releaseAuthBlockedItems(): Promise<void> {
+    const queue = await storage.getQueue();
+    const now = Date.now();
+    const blocked = queue.filter((item) => item.status === QueueItemStatus.AuthBlocked);
+    for (const item of blocked) {
+      await storage.updateQueueItem(item.id, {
+        status: QueueItemStatus.AwaitingRetry,
+        nextRetryAt: now,
+        authBlockedAt: undefined,
+      });
+    }
+  }
+
+  async expireAuthBlockedItems(): Promise<QueueItem[]> {
+    const queue = await storage.getQueue();
+    const now = Date.now();
+    const expired = queue.filter(
+      (item) =>
+        item.status === QueueItemStatus.AuthBlocked &&
+        !!item.authBlockedAt &&
+        now - item.authBlockedAt > MAX_AUTH_BLOCK_MS
+    );
+
+    if (expired.length > 0) {
+      await storage.removeFromQueue(expired.map((item) => item.id));
+    }
+
+    return expired;
   }
 
   /**
@@ -88,7 +146,10 @@ export class QueueManager {
    */
   async pruneDeadLetters(): Promise<void> {
     const queue = await storage.getQueue();
-    const filtered = queue.filter((item) => item.retries < MAX_RETRIES);
+    const filtered = queue.filter((item) => {
+      const status = item.status || QueueItemStatus.Pending;
+      return item.retries < MAX_RETRIES && status !== QueueItemStatus.Failed;
+    });
     await browser.storage.local.set({ queue: filtered });
   }
 
@@ -97,7 +158,7 @@ export class QueueManager {
    */
   async getQueueSize(): Promise<number> {
     const queue = await storage.getQueue();
-    return queue.length;
+    return queue.filter((item) => item.status !== QueueItemStatus.Failed).length;
   }
 
   /**

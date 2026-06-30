@@ -2,11 +2,51 @@
  * Shared types for the ArchiveBox Auto-Sync extension
  */
 
+export enum AuthHealthStatus {
+  NoCredentials = 'no-credentials',
+  CredentialsStored = 'credentials-stored',
+  SessionValid = 'session-valid',
+  SessionExpired = 'session-expired',
+  InvalidCredentials = 'invalid-credentials',
+}
+
+export type AuthRecoveryAction =
+  | 'none'
+  | 'save-credentials'
+  | 'refresh-session';
+
+export interface AuthHealth {
+  status: AuthHealthStatus;
+  updatedAt: number;
+  retryCount: number;
+  requiresUserAction: boolean;
+  recoveryAction: AuthRecoveryAction;
+  lastError?: string;
+}
+
+export interface EncryptedCredential {
+  username: string;
+  encryptedPassword: string;
+  createdAt: number;
+  updatedAt: number;
+  scheme: 'aes-gcm-v1';
+}
+
+export enum QueueItemStatus {
+  Pending = 'pending',
+  AuthBlocked = 'auth-blocked',
+  AwaitingRetry = 'awaiting-retry',
+  Submitted = 'submitted',
+  Failed = 'failed',
+}
+
 export interface Config {
   archiveBoxUrl: string;
   username: string;
   sessionCookie?: string;
   lastLogin?: number;
+  hasEncryptedCredential?: boolean;
+  authHealth?: AuthHealth;
   batchInterval: number; // milliseconds, default 10000
   blocklistPatterns: string[];
 }
@@ -18,6 +58,8 @@ export interface QueueItem {
   createdAt: number;
   retries: number;
   nextRetryAt: number;
+  status?: QueueItemStatus;
+  authBlockedAt?: number;
   lastError?: string;
 }
 

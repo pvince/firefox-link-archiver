@@ -385,10 +385,19 @@
               <span class="queue-status-value" id="queueSize">0</span>
             </div>
             <div class="queue-status-item">
+              <span class="queue-status-label">Auth-blocked URLs:</span>
+              <span class="queue-status-value" id="authBlockedCount">0</span>
+            </div>
+            <div class="queue-status-item">
               <span class="queue-status-label">Last Sync:</span>
               <span class="queue-status-value" id="lastSync">Never</span>
             </div>
+            <div class="queue-status-item">
+              <span class="queue-status-label">Auth Health:</span>
+              <span class="queue-status-value" id="authHealthStatus">Unknown</span>
+            </div>
           </div>
+          <div class="hint" id="authHealthHint"></div>
           <button class="btn-sync" id="syncBtn">Sync Now</button>
         </div>
 

@@ -7,7 +7,7 @@ Automatically sync your Firefox browser history and bookmarks to your ArchiveBox
 - ✅ Real-time history and bookmark syncing
 - ✅ Buffered batch submission to reduce ArchiveBox load
 - ✅ Durable queue with exponential backoff retry
-- ✅ Session-based authentication
+- ✅ Local credential obfuscation with automatic session re-authentication
 - ✅ Manual URL submission from popup
 - ✅ Desktop Firefox and Firefox for Android support
 - ✅ Structured error logging and debug interface
@@ -16,7 +16,7 @@ Automatically sync your Firefox browser history and bookmarks to your ArchiveBox
 
 ### Prerequisites
 
-- Node.js 16+ and npm
+- Node.js 18+ and npm
 - Firefox 121+ (desktop or Android)
 - ArchiveBox 0.7.3 or later
 
@@ -76,6 +76,10 @@ Alternatively, publish the XPI to an [AMO Custom Collection](https://support.moz
 4. Configure URL Blocklist regex patterns (one pattern per line)
 5. Click "Test Connection" to validate
 6. Click "Save"
+
+The password is stored with lightweight local encryption so the extension can
+refresh expired ArchiveBox sessions automatically. This is designed to reduce
+casual exposure in local storage, not to provide OS keychain-grade secrecy.
 
 The extension automatically adds the configured ArchiveBox URL to the effective
 blocklist by default so self-referential ArchiveBox pages are not re-submitted.
@@ -212,7 +216,7 @@ npx web-ext sign --api-key YOUR_API_KEY --api-secret YOUR_API_SECRET
 1. **Restart-safe**: All state persisted in `browser.storage.local`; no in-memory data survives browser restarts
 2. **Event-driven**: Listeners at top level, alarms for periodic sync, no long-running timers
 3. **Android-compatible**: APIs guarded with capability checks; desktop-only features skip gracefully on Android
-4. **Secure**: Session-based auth, credentials stored locally, secrets redacted from logs
+4. **Secure by default**: Session-based auth, local credential obfuscation, secrets redacted from logs
 5. **Resilient**: Exponential backoff retry, dead-letter after 10 attempts, classified error handling
 
 ## Browser Support
@@ -249,6 +253,8 @@ npx web-ext sign --api-key YOUR_API_KEY --api-secret YOUR_API_SECRET
 - Check ArchiveBox logs for submission errors
 - Check Debug Logs for error messages
 - Manual "Sync Now" button can trigger immediate retry
+- Open the popup or options page and check the auth health status; if credentials are
+	marked invalid, re-save them in settings to release auth-blocked queue items.
 
 ## License
 

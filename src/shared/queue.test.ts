@@ -4,7 +4,7 @@
 
 import { QueueManager } from '../shared/queue';
 import { StorageManager } from '../shared/storage';
-import { QueueItem } from '../shared/types';
+import { QueueItemStatus } from '../shared/types';
 
 // Mock browser.storage.local
 const mockStorage: Record<string, unknown> = {};
@@ -192,5 +192,57 @@ describe('QueueManager', () => {
 
     const size = await queueManager.getQueueSize();
     expect(size).toBe(0);
+  });
+
+  test('should mark auth blocked items without incrementing retries', async () => {
+    await queueManager.enqueue(['https://example.com']);
+
+    const queue = await storage.getQueue();
+    const id = queue[0].id;
+    const retriesBefore = queue[0].retries;
+
+    await queueManager.markAuthBlocked(id, 'Auth failed');
+
+    const after = await storage.getQueue();
+    expect(after[0].status).toBe(QueueItemStatus.AuthBlocked);
+    expect(after[0].retries).toBe(retriesBefore);
+    expect(after[0].lastError).toBe('Auth failed');
+  });
+
+  test('should exclude auth blocked items from dequeue and requeue after release', async () => {
+    await queueManager.enqueue(['https://example.com']);
+
+    const queue = await storage.getQueue();
+    const id = queue[0].id;
+
+    await queueManager.markAuthBlocked(id, 'Auth failed');
+    const blockedBatch = await queueManager.dequeueBatch(20);
+    expect(blockedBatch).toHaveLength(0);
+
+    await queueManager.releaseAuthBlockedItems();
+    const releasedBatch = await queueManager.dequeueBatch(20);
+    expect(releasedBatch).toHaveLength(1);
+    expect(releasedBatch[0].id).toBe(id);
+  });
+
+  test('should remove auth blocked items that expired over 24h', async () => {
+    await queueManager.enqueue(['https://example.com']);
+
+    const queue = await storage.getQueue();
+    const id = queue[0].id;
+
+    const oldTimestamp = Date.now() - 25 * 60 * 60 * 1000;
+    await storage.updateQueueItem(id, {
+      status: QueueItemStatus.AuthBlocked,
+      authBlockedAt: oldTimestamp,
+      lastError: 'Auth failed',
+    });
+
+    const expired = await queueManager.expireAuthBlockedItems();
+    expect(expired).toHaveLength(1);
+    expect(expired[0].id).toBe(id);
+
+    const after = await storage.getQueue();
+    expect(after.some((item) => item.id === id)).toBe(false);
   });
 });

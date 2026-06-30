@@ -18,10 +18,34 @@ import {
   NetworkError,
   ServerError,
   ClientError,
+  AuthHealthStatus,
 } from '../shared/types';
 
 const ALARM_NAME = 'syncQueue';
 const DEFAULT_BATCH_INTERVAL = 10000; // 10 seconds in milliseconds
+
+async function updateAuthBadge(): Promise<void> {
+  if (typeof (globalThis as any).browser?.action?.setBadgeText !== 'function') {
+    return;
+  }
+
+  const health = await storage.getAuthHealth();
+  const needsAttention =
+    health?.requiresUserAction ||
+    health?.status === AuthHealthStatus.SessionExpired ||
+    health?.status === AuthHealthStatus.InvalidCredentials ||
+    health?.status === AuthHealthStatus.NoCredentials;
+
+  if (needsAttention) {
+    await browser.action.setBadgeText({ text: '!' });
+    if (typeof (globalThis as any).browser?.action?.setBadgeBackgroundColor === 'function') {
+      await browser.action.setBadgeBackgroundColor({ color: '#d32f2f' });
+    }
+    return;
+  }
+
+  await browser.action.setBadgeText({ text: '' });
+}
 
 /**
  * Initialize the background service worker
@@ -42,6 +66,8 @@ async function initialize(): Promise<void> {
   await logger.info('Background worker initialized', {
     alarmInterval: DEFAULT_BATCH_INTERVAL,
   });
+
+  await updateAuthBadge();
 }
 
 /**
@@ -92,12 +118,51 @@ async function onBookmarkCreated(
  */
 async function processSyncQueue(): Promise<void> {
   try {
+    const expiredAuthBlocked = await queueManager.expireAuthBlockedItems();
+    if (expiredAuthBlocked.length > 0) {
+      await storage.setAuthHealth({
+        status: AuthHealthStatus.InvalidCredentials,
+        updatedAt: Date.now(),
+        retryCount: expiredAuthBlocked.length,
+        requiresUserAction: true,
+        recoveryAction: 'save-credentials',
+        lastError:
+          'Some queued URLs were blocked by authentication issues for over 24h. Save credentials and requeue manually.',
+      });
+    }
+
     // Get config
     const config = await storage.getConfig();
 
     if (!config.archiveBoxUrl || !config.username) {
+      await storage.setAuthHealth({
+        status: AuthHealthStatus.NoCredentials,
+        updatedAt: Date.now(),
+        retryCount: 0,
+        requiresUserAction: true,
+        recoveryAction: 'save-credentials',
+        lastError: 'ArchiveBox URL or username is missing in settings',
+      });
+      await updateAuthBadge();
       await logger.debug('ArchiveBox not configured, skipping sync');
       return;
+    }
+
+    const authBlockedItems = await queueManager.getAuthBlockedItems();
+    if (authBlockedItems.length > 0) {
+      try {
+        await authManager.ensureAuthenticated();
+        await queueManager.releaseAuthBlockedItems();
+        await logger.info('Released auth-blocked queue items after auth recovery', {
+          count: authBlockedItems.length,
+        });
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        await logger.warn('Auth-blocked items remain paused until authentication is healthy', {
+          error: errorMessage,
+          count: authBlockedItems.length,
+        });
+      }
     }
 
     // Fetch batch
@@ -126,6 +191,7 @@ async function processSyncQueue(): Promise<void> {
     // Submit to ArchiveBox
     try {
       await authManager.ensureAuthenticated();
+      await queueManager.releaseAuthBlockedItems();
       await archiveBoxClient.submitUrls(config.archiveBoxUrl, allUrls, tags);
 
       // Mark all as success
@@ -134,18 +200,20 @@ async function processSyncQueue(): Promise<void> {
       await logger.info('Batch submitted successfully', {
         urlCount: allUrls.length,
       });
+      await updateAuthBadge();
     } catch (err) {
       // Classify error and mark accordingly
       const errorMessage = err instanceof Error ? err.message : String(err);
 
       if (err instanceof AuthError) {
-        // Auth errors: mark for retry with re-login
+        // Auth errors: pause these items until credentials are repaired.
         for (const item of batch) {
-          await queueManager.markFailure(item.id, `Auth error: ${errorMessage}`);
+          await queueManager.markAuthBlocked(item.id, `Auth error: ${errorMessage}`);
         }
-        await logger.warn('Auth error during sync, will retry with re-login', {
+        await logger.warn('Auth error during sync, queue items are blocked pending credential fix', {
           error: errorMessage,
         });
+        await updateAuthBadge();
       } else if (err instanceof ServerError || err instanceof NetworkError) {
         // Temporary errors: mark for retry
         for (const item of batch) {
@@ -172,6 +240,12 @@ async function processSyncQueue(): Promise<void> {
     }
   } catch (err) {
     await logger.error('Failed to process sync queue', { error: err });
+  } finally {
+    try {
+      await updateAuthBadge();
+    } catch (err) {
+      await logger.error('Failed to refresh auth badge', { error: err });
+    }
   }
 }
 
@@ -200,6 +274,18 @@ function registerListeners(): void {
 
   // Alarm listener (periodic sync)
   (globalThis as any).browser.alarms.onAlarm.addListener(onAlarm as any);
+
+  // Runtime message listener for explicit sync requests from UI.
+  if (typeof (globalThis as any).browser?.runtime?.onMessage !== 'undefined') {
+    (globalThis as any).browser.runtime.onMessage.addListener(
+      (message: Record<string, unknown>) => {
+        if (message.action === 'syncQueue') {
+          return processSyncQueue().then(() => ({ success: true }));
+        }
+        return undefined;
+      }
+    );
+  }
 }
 
 /**

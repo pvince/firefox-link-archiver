@@ -12,7 +12,7 @@ Support desktop Firefox and Firefox for Android unless a task is explicitly desk
 - If a feature needs a desktop-only API, isolate it behind capability checks and keep the Android path installable and understandable.
 - Prefer Manifest V3-compatible, event-driven background logic. Keep listeners at top level, persist state in storage, and use alarms instead of relying on long-lived timers or persistent background pages.
 - Firefox MV3 uses `background.scripts` (array), **not** `background.service_worker`. The `service_worker` key is Chrome-only and will break loading in Firefox. Never change `background.scripts` to `background.service_worker`.
-- `npm test` requires `jest-environment-jsdom` which is not currently installed. Use `npm run build` and `npm run typecheck` as the reliable validation path until the Jest environment is fixed.
+- The Jest environment is configured with `jest-environment-jsdom`; use targeted tests plus `npm run build` and `npm run typecheck` for reliable validation.
 - The packaging script (`npm run package`) auto-validates the XPI structure after creation by reading the ZIP central directory in pure Node.js. Do not replace this with shell `find`/`unzip` calls — they are not cross-platform on Windows.
 - Unsigned XPIs install only via `about:debugging`. The "Install Add-on from File" path in `about:addons` requires Mozilla signing and will always show a corruption error for unsigned builds. This is expected Firefox behavior, not a packaging bug.
 - Installing on Firefox for Android requires either a signed XPI hosted at a reachable URL, or an AMO custom collection. The `about:debugging` remote USB flow also works for development.
@@ -20,7 +20,9 @@ Support desktop Firefox and Firefox for Android unless a task is explicitly desk
 ## ArchiveBox Integration
 
 - Do not invent ArchiveBox endpoints or authentication flows. Check the official docs first: [ArchiveBox README](https://github.com/ArchiveBox/ArchiveBox) and [ArchiveBox Wiki](https://github.com/ArchiveBox/ArchiveBox/wiki).
+- Target server version for this project is ArchiveBox `v0.7.4`, which does not provide the newer REST token workflow. Keep session-login based submission as the primary path.
 - Never hardcode the ArchiveBox server URL, credentials, or API tokens. Store them in extension-managed storage and redact them from logs, screenshots, and fixtures.
+- For session-login reliability, persist credentials only in encrypted-at-rest form and use them for automatic re-authentication when a session cookie expires.
 - Assume submitted URLs may be private. Avoid logging full URLs, cookies, headers, or request bodies unless a task explicitly requires secure debugging output.
 
 ## Development Conventions

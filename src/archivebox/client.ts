@@ -12,6 +12,22 @@ import {
 } from '../shared/types';
 
 export class ArchiveBoxClient {
+  private async submitRequest(
+    submitUrl: string,
+    formData: URLSearchParams,
+    sessionCookie: string
+  ): Promise<Response> {
+    return fetch(submitUrl, {
+      method: 'POST',
+      body: formData.toString(),
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Cookie: sessionCookie,
+      },
+      credentials: 'include',
+    });
+  }
+
   /**
    * Submit URLs to ArchiveBox via form submission
    */
@@ -28,12 +44,6 @@ export class ArchiveBoxClient {
     const normalizedUrls = this.dedupeUrls(
       urls.map((url) => this.normalizeUrl(url))
     );
-
-    // Ensure authenticated
-    await authManager.ensureAuthenticated();
-
-    // Get session cookie
-    const sessionCookie = await authManager.getSessionCookie();
 
     // Format URLs as multiline string
     const urlString = normalizedUrls.join('\n');
@@ -55,20 +65,27 @@ export class ArchiveBoxClient {
         tags: tags,
       });
 
-      const response = await fetch(submitUrl, {
-        method: 'POST',
-        body: formData.toString(),
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Cookie: sessionCookie,
-        },
-        credentials: 'include',
-      });
+      await authManager.ensureAuthenticated();
+      let sessionCookie = await authManager.getSessionCookie();
+
+      let response = await this.submitRequest(submitUrl, formData, sessionCookie);
+
+      if (response.status === 401 || response.status === 403) {
+        await logger.warn('ArchiveBox rejected session, attempting one-time refresh');
+        await authManager.refreshSessionFromStoredCredential(
+          `ArchiveBox rejected session with status ${response.status}`
+        );
+        sessionCookie = await authManager.getSessionCookie();
+        response = await this.submitRequest(submitUrl, formData, sessionCookie);
+      }
 
       // Handle authentication errors
       if (response.status === 401 || response.status === 403) {
         await logger.warn('Authentication failed, session may have expired');
-        throw new AuthError('Session expired or invalid');
+        await authManager.markInvalidCredentials(
+          `ArchiveBox rejected authentication after retry (${response.status})`
+        );
+        throw new AuthError('Authentication failed. Open settings and save valid credentials.');
       }
 
       // Handle server errors
@@ -98,6 +115,7 @@ export class ArchiveBoxClient {
     } catch (err) {
       if (
         err instanceof AuthError ||
+        err instanceof NetworkError ||
         err instanceof ServerError ||
         err instanceof ClientError
       ) {

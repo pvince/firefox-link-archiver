@@ -7,6 +7,7 @@ import { queueManager } from '../shared/queue';
 import { authManager } from '../archivebox/auth';
 import { logger } from '../shared/logger';
 import { buildArchiveBoxBlockPattern } from '../shared/blocklist';
+import { AuthHealth, AuthHealthStatus } from '../shared/types';
 
 interface OptionsPageElements {
   archiveBoxUrl: HTMLInputElement;
@@ -19,6 +20,9 @@ interface OptionsPageElements {
   syncBtn: HTMLButtonElement;
   connectionStatus: HTMLDivElement;
   queueSize: HTMLSpanElement;
+  authBlockedCount: HTMLSpanElement;
+  authHealthStatus: HTMLSpanElement;
+  authHealthHint: HTMLDivElement;
   lastSync: HTMLSpanElement;
   logsContainer: HTMLDivElement;
 }
@@ -46,8 +50,57 @@ function getElements(): OptionsPageElements {
       'connectionStatus'
     ) as HTMLDivElement,
     queueSize: document.getElementById('queueSize') as HTMLSpanElement,
+    authBlockedCount: document.getElementById('authBlockedCount') as HTMLSpanElement,
+    authHealthStatus: document.getElementById('authHealthStatus') as HTMLSpanElement,
+    authHealthHint: document.getElementById('authHealthHint') as HTMLDivElement,
     lastSync: document.getElementById('lastSync') as HTMLSpanElement,
     logsContainer: document.getElementById('logsContainer') as HTMLDivElement,
+  };
+}
+
+function describeAuthHealth(authHealth: AuthHealth | null): {
+  label: string;
+  hint: string;
+  warning: boolean;
+} {
+  if (!authHealth || authHealth.status === AuthHealthStatus.SessionValid) {
+    return {
+      label: 'Healthy',
+      hint: 'Authentication is valid. Automatic sync can submit queued URLs.',
+      warning: false,
+    };
+  }
+
+  if (authHealth.status === AuthHealthStatus.CredentialsStored) {
+    return {
+      label: 'Credentials Ready',
+      hint: 'Locally obfuscated credentials are stored. A fresh session will be created automatically when needed.',
+      warning: false,
+    };
+  }
+
+  if (authHealth.status === AuthHealthStatus.NoCredentials) {
+    return {
+      label: 'Action Required',
+      hint: authHealth.lastError || 'Save your ArchiveBox credentials to resume automatic archiving.',
+      warning: true,
+    };
+  }
+
+  if (authHealth.status === AuthHealthStatus.SessionExpired) {
+    return {
+      label: 'Session Expired',
+      hint: authHealth.lastError || 'The extension is trying to re-authenticate using saved credentials.',
+      warning: true,
+    };
+  }
+
+  return {
+    label: 'Invalid Credentials',
+    hint:
+      authHealth.lastError ||
+      'ArchiveBox rejected the saved credentials. Open settings and save valid credentials.',
+    warning: true,
   };
 }
 
@@ -200,16 +253,11 @@ async function saveConfig(): Promise<void> {
       archiveBoxUrl: url,
       username,
       blocklistPatterns,
-      // Note: Password is not stored, only session cookie is stored after login
-      // For future versions, consider using browser.storage.sync with encryption
     });
 
-    // Perform login to get session cookie
-    const result = await authManager.login(url, username, password);
-    await storage.setConfig({
-      sessionCookie: result.cookie,
-      lastLogin: Date.now(),
-    });
+    // Perform login to get session cookie and persist encrypted credentials
+    await authManager.login(url, username, password);
+    await queueManager.releaseAuthBlockedItems();
 
     showStatus('✓ Configuration saved!', 'success');
     elements.password.value = ''; // Clear password field
@@ -217,6 +265,7 @@ async function saveConfig(): Promise<void> {
     // Give user feedback before redirecting
     setTimeout(() => {
       updateStatus();
+      updateLogs();
     }, 1000);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -229,6 +278,15 @@ async function saveConfig(): Promise<void> {
 async function updateStatus(): Promise<void> {
   const queueSize = await queueManager.getQueueSize();
   elements.queueSize.textContent = String(queueSize);
+
+  const authBlocked = await queueManager.getAuthBlockedItems();
+  elements.authBlockedCount.textContent = String(authBlocked.length);
+
+  const authHealth = await storage.getAuthHealth();
+  const description = describeAuthHealth(authHealth);
+  elements.authHealthStatus.textContent = description.label;
+  elements.authHealthStatus.style.color = description.warning ? '#c62828' : '#2e7d32';
+  elements.authHealthHint.textContent = description.hint;
 
   const syncState = await storage.getSyncState();
   if (syncState.lastHistorySync || syncState.lastBookmarksSync) {

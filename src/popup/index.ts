@@ -5,6 +5,7 @@
 import { storage } from '../shared/storage';
 import { queueManager } from '../shared/queue';
 import { logger } from '../shared/logger';
+import { AuthHealthStatus } from '../shared/types';
 
 interface PopupElements {
   urlInput: HTMLTextAreaElement;
@@ -16,6 +17,9 @@ interface PopupElements {
   quickLastSync: HTMLSpanElement;
   lastErrorContainer: HTMLDivElement;
   lastError: HTMLSpanElement;
+  authHealthContainer: HTMLDivElement;
+  authHealthMessage: HTMLSpanElement;
+  authActionBtn: HTMLButtonElement;
 }
 
 let elements: PopupElements;
@@ -37,7 +41,25 @@ function getElements(): PopupElements {
       'lastErrorContainer'
     ) as HTMLDivElement,
     lastError: document.getElementById('lastError') as HTMLSpanElement,
+    authHealthContainer: document.getElementById(
+      'authHealthContainer'
+    ) as HTMLDivElement,
+    authHealthMessage: document.getElementById('authHealthMessage') as HTMLSpanElement,
+    authActionBtn: document.getElementById('authActionBtn') as HTMLButtonElement,
   };
+}
+
+function formatAuthHealthMessage(status: AuthHealthStatus, fallback?: string): string {
+  if (status === AuthHealthStatus.NoCredentials) {
+    return fallback || 'Credentials missing';
+  }
+  if (status === AuthHealthStatus.SessionExpired) {
+    return fallback || 'Session expired';
+  }
+  if (status === AuthHealthStatus.InvalidCredentials) {
+    return fallback || 'Credentials rejected';
+  }
+  return fallback || 'Authentication requires attention';
 }
 
 function showStatus(
@@ -150,6 +172,23 @@ async function updateStatus(): Promise<void> {
     } else {
       elements.lastErrorContainer.style.display = 'none';
     }
+
+    const authHealth = await storage.getAuthHealth();
+    if (
+      authHealth &&
+      authHealth.status !== AuthHealthStatus.SessionValid &&
+      authHealth.status !== AuthHealthStatus.CredentialsStored
+    ) {
+      elements.authHealthMessage.textContent = formatAuthHealthMessage(
+        authHealth.status,
+        authHealth.lastError
+      );
+      elements.authHealthContainer.style.display = 'flex';
+      elements.authActionBtn.style.display = authHealth.requiresUserAction ? 'block' : 'none';
+    } else {
+      elements.authHealthContainer.style.display = 'none';
+      elements.authActionBtn.style.display = 'none';
+    }
   } catch (err) {
     await logger.error('Failed to update status', { error: err });
   }
@@ -191,6 +230,7 @@ async function initialize(): Promise<void> {
     // Event listeners
     elements.submitBtn.addEventListener('click', submitUrls);
     elements.settingsBtn.addEventListener('click', openSettings);
+    elements.authActionBtn.addEventListener('click', openSettings);
 
     // Allow Enter key for submission (Shift+Enter for new line)
     elements.urlInput.addEventListener('keydown', (e) => {
