@@ -17,6 +17,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const OUTPUT = path.join(ROOT, 'archivebox-autosync-source.zip');
+const MAX_SOURCE_ZIP_BYTES = 200 * 1024 * 1024;
 
 const INCLUDE_FILES = [
   'manifest.json',
@@ -41,9 +42,18 @@ const output = fs.createWriteStream(OUTPUT);
 const archive = archiver('zip', { zlib: { level: 9 } });
 
 output.on('close', () => {
-  const kb = (archive.pointer() / 1024).toFixed(2);
+  const bytes = archive.pointer();
+  const kb = (bytes / 1024).toFixed(2);
+  const mb = (bytes / (1024 * 1024)).toFixed(2);
+
+  if (bytes > MAX_SOURCE_ZIP_BYTES) {
+    console.error(`❌ Source ZIP exceeds AMO 200 MB limit: ${mb} MB`);
+    process.exit(1);
+  }
+
   console.log(`✅ Source ZIP created: ${OUTPUT}`);
   console.log(`   Size: ${kb} KB`);
+  console.log(`   AMO limit check: ${mb} MB / 200.00 MB`);
   console.log('');
   console.log('📤 Upload this file to AMO as the source code submission.');
 });

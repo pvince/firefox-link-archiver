@@ -123,6 +123,14 @@ The extension will begin syncing on next browser activity.
 
 This section provides the information required to reproduce the XPI submitted to addons.mozilla.org.
 
+### AMO submission checklist mapping
+
+- Step-by-step build instructions: documented below in "Reproduce the XPI".
+- Build script that executes all technical steps: `npm run package` (XPI) and `npm run package-source` (source ZIP).
+- Operating system and build environment requirements: documented in "Environment".
+- Program versions and installation instructions: documented in "Required software".
+- Source ZIP size limit check: `npm run package-source` enforces AMO's 200 MB max.
+
 ### Environment
 
 The extension builds on **Linux, macOS, or Windows**. The default AMO reviewer environment (Ubuntu 24.04 LTS, ARM64, Node 24, npm 11) is fully compatible.
@@ -133,6 +141,16 @@ The extension builds on **Linux, macOS, or Windows**. The default AMO reviewer e
 | npm | 9 or later (bundled with Node) | https://nodejs.org/ |
 
 No other globally installed tools are needed. All build tooling (`esbuild`, `typescript`, `archiver`) is installed locally via npm.
+
+### Required software
+
+1. Install Node.js LTS from https://nodejs.org/
+2. Verify installation:
+```bash
+node --version
+npm --version
+```
+3. Use npm (bundled with Node.js) to install dependencies from lockfile.
 
 ### Reproduce the XPI
 
@@ -150,6 +168,25 @@ The `npm run package` command:
 3. Validates the XPI structure
 
 The resulting `archivebox-autosync.xpi` should be byte-for-byte comparable (modulo ZIP timestamps) to the submitted file. Use a diff tool on the extracted `dist/*.js` bundles to verify.
+
+### Build source ZIP for AMO
+
+```bash
+# 1. Install dependencies
+npm ci
+
+# 2. Create source archive for AMO review
+npm run package-source
+```
+
+This produces `archivebox-autosync-source.zip`, which includes source files and build scripts needed to reproduce the XPI.
+The script prints archive size and fails if the ZIP exceeds AMO's 200 MB limit.
+
+### Generated code disclosure
+
+- TypeScript source under `src/` is transpiled/bundled by esbuild into `dist/*.js`.
+- Bundled files are generated build artifacts and are included in the XPI, not the submitted source ZIP as authored source.
+- No template engines are used for HTML or CSS.
 
 ### Source layout
 
