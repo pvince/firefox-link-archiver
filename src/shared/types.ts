@@ -43,7 +43,7 @@ export enum QueueItemStatus {
 export interface Config {
   archiveBoxUrl: string;
   username: string;
-  sessionCookie?: string;
+  apiToken?: string;
   lastLogin?: number;
   hasEncryptedCredential?: boolean;
   authHealth?: AuthHealth;

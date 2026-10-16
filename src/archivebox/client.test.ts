@@ -5,7 +5,7 @@
 jest.mock('../archivebox/auth', () => ({
   authManager: {
     ensureAuthenticated: jest.fn(),
-    getSessionCookie: jest.fn(),
+    getApiToken: jest.fn(),
     refreshSessionFromStoredCredential: jest.fn(),
     markInvalidCredentials: jest.fn(),
   },
@@ -89,9 +89,9 @@ describe('ArchiveBoxClient', () => {
 
   test('should refresh session once and retry submit on 401', async () => {
     (authManager.ensureAuthenticated as jest.Mock).mockResolvedValue(undefined);
-    (authManager.getSessionCookie as jest.Mock)
-      .mockResolvedValueOnce('sessionid=old')
-      .mockResolvedValueOnce('sessionid=new');
+    (authManager.getApiToken as jest.Mock)
+      .mockResolvedValueOnce('old-token')
+      .mockResolvedValueOnce('new-token');
     (authManager.refreshSessionFromStoredCredential as jest.Mock).mockResolvedValue(
       undefined
     );
@@ -107,6 +107,7 @@ describe('ArchiveBoxClient', () => {
         status: 200,
         statusText: 'OK',
         ok: true,
+        json: async () => ({ success: true, errors: [] }),
       });
 
     (globalThis as any).fetch = fetchMock;
@@ -122,9 +123,9 @@ describe('ArchiveBoxClient', () => {
 
   test('should mark invalid credentials when retry is still unauthorized', async () => {
     (authManager.ensureAuthenticated as jest.Mock).mockResolvedValue(undefined);
-    (authManager.getSessionCookie as jest.Mock)
-      .mockResolvedValueOnce('sessionid=old')
-      .mockResolvedValueOnce('sessionid=new');
+    (authManager.getApiToken as jest.Mock)
+      .mockResolvedValueOnce('old-token')
+      .mockResolvedValueOnce('new-token');
     (authManager.refreshSessionFromStoredCredential as jest.Mock).mockResolvedValue(
       undefined
     );
@@ -154,7 +155,7 @@ describe('ArchiveBoxClient', () => {
 
   test('should preserve network errors when one-time session refresh fails', async () => {
     (authManager.ensureAuthenticated as jest.Mock).mockResolvedValue(undefined);
-    (authManager.getSessionCookie as jest.Mock).mockResolvedValue('sessionid=old');
+    (authManager.getApiToken as jest.Mock).mockResolvedValue('old-token');
     (authManager.refreshSessionFromStoredCredential as jest.Mock).mockRejectedValue(
       new NetworkError('ArchiveBox unreachable')
     );

@@ -14,22 +14,22 @@ import {
 export class ArchiveBoxClient {
   private async submitRequest(
     submitUrl: string,
-    formData: URLSearchParams,
-    sessionCookie: string
+    payload: Record<string, unknown>,
+    apiToken: string
   ): Promise<Response> {
     return fetch(submitUrl, {
       method: 'POST',
-      body: formData.toString(),
+      body: JSON.stringify(payload),
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Cookie: sessionCookie,
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiToken}`,
       },
-      credentials: 'include',
+      credentials: 'omit',
     });
   }
 
   /**
-   * Submit URLs to ArchiveBox via form submission
+   * Submit URLs to ArchiveBox via the REST API
    */
   async submitUrls(
     archiveBoxUrl: string,
@@ -45,19 +45,16 @@ export class ArchiveBoxClient {
       urls.map((url) => this.normalizeUrl(url))
     );
 
-    // Format URLs as multiline string
-    const urlString = normalizedUrls.join('\n');
-
-    // Build form data
-    const formData = new URLSearchParams();
-    formData.append('url', urlString);
-    formData.append('depth', '0');
-    formData.append('parser', 'auto');
+    const payload: Record<string, unknown> = {
+      urls: normalizedUrls,
+      depth: 0,
+      parser: 'auto',
+    };
     if (tags && tags.length > 0) {
-      formData.append('tag', tags.join(','));
+      payload.tag = tags.join(',');
     }
 
-    const submitUrl = `${archiveBoxUrl}/add/`;
+    const submitUrl = `${archiveBoxUrl}/api/v1/cli/add`;
 
     try {
       await logger.info('Submitting URLs to ArchiveBox', {
@@ -66,17 +63,17 @@ export class ArchiveBoxClient {
       });
 
       await authManager.ensureAuthenticated();
-      let sessionCookie = await authManager.getSessionCookie();
+      let apiToken = await authManager.getApiToken();
 
-      let response = await this.submitRequest(submitUrl, formData, sessionCookie);
+      let response = await this.submitRequest(submitUrl, payload, apiToken);
 
       if (response.status === 401 || response.status === 403) {
         await logger.warn('ArchiveBox rejected session, attempting one-time refresh');
         await authManager.refreshSessionFromStoredCredential(
           `ArchiveBox rejected session with status ${response.status}`
         );
-        sessionCookie = await authManager.getSessionCookie();
-        response = await this.submitRequest(submitUrl, formData, sessionCookie);
+        apiToken = await authManager.getApiToken();
+        response = await this.submitRequest(submitUrl, payload, apiToken);
       }
 
       // Handle authentication errors
@@ -105,6 +102,13 @@ export class ArchiveBoxClient {
       // Success (200-399)
       if (!response.ok) {
         throw new Error(`Unexpected status: ${response.status}`);
+      }
+
+      const result = (await response.json()) as { success?: boolean; errors?: string[] };
+      if (result.success === false) {
+        throw new ServerError(
+          `ArchiveBox rejected submission: ${(result.errors || []).join('; ') || 'unknown error'}`
+        );
       }
 
       await logger.info('URLs submitted successfully', {

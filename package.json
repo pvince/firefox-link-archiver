@@ -1,6 +1,6 @@
 {
   "name": "firefox-archivebox-sync",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Firefox WebExtension for syncing browser history & bookmarks to ArchiveBox",
   "type": "module",
   "scripts": {

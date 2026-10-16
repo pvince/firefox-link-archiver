@@ -7,7 +7,7 @@ Automatically sync your Firefox browser history and bookmarks to your ArchiveBox
 - ✅ Real-time history and bookmark syncing
 - ✅ Buffered batch submission to reduce ArchiveBox load
 - ✅ Durable queue with exponential backoff retry
-- ✅ Local credential obfuscation with automatic session re-authentication
+- ✅ Local credential obfuscation with automatic API token refresh
 - ✅ Manual URL submission from popup
 - ✅ Desktop Firefox and Firefox for Android support
 - ✅ Structured error logging and debug interface
@@ -18,7 +18,7 @@ Automatically sync your Firefox browser history and bookmarks to your ArchiveBox
 
 - Node.js 18+ and npm
 - Firefox 121+ (desktop or Android)
-- ArchiveBox 0.7.3 or later
+- ArchiveBox 0.8 or later (REST API at `/api/v1/`; tested with 0.9.71)
 
 ### Development Setup
 
@@ -78,7 +78,7 @@ Alternatively, publish the XPI to an [AMO Custom Collection](https://support.moz
 6. Click "Save"
 
 The password is stored with lightweight local encryption so the extension can
-refresh expired ArchiveBox sessions automatically. This is designed to reduce
+refresh expired ArchiveBox API tokens automatically. This is designed to reduce
 casual exposure in local storage, not to provide OS keychain-grade secrecy.
 
 The extension automatically adds the configured ArchiveBox URL to the effective
@@ -242,7 +242,7 @@ npx web-ext sign --api-key YOUR_API_KEY --api-secret YOUR_API_SECRET
 ## Architecture
 
 - **`src/background/`** — Event-driven service worker (listens for history/bookmark events)
-- **`src/archivebox/`** — ArchiveBox HTTP client and session authentication
+- **`src/archivebox/`** — ArchiveBox HTTP client and API token authentication
 - **`src/collectors/`** — History and bookmarks data collectors
 - **`src/shared/`** — Storage abstraction, queue manager, logger
 - **`src/options/`** — Settings UI (configuration, status, debug logs)
@@ -253,7 +253,7 @@ npx web-ext sign --api-key YOUR_API_KEY --api-secret YOUR_API_SECRET
 1. **Restart-safe**: All state persisted in `browser.storage.local`; no in-memory data survives browser restarts
 2. **Event-driven**: Listeners at top level, alarms for periodic sync, no long-running timers
 3. **Android-compatible**: APIs guarded with capability checks; desktop-only features skip gracefully on Android
-4. **Secure by default**: Session-based auth, local credential obfuscation, secrets redacted from logs
+4. **Secure by default**: API token auth, local credential obfuscation, secrets redacted from logs
 5. **Resilient**: Exponential backoff retry, dead-letter after 10 attempts, classified error handling
 
 ## Browser Support
@@ -275,7 +275,7 @@ npx web-ext sign --api-key YOUR_API_KEY --api-secret YOUR_API_SECRET
 - Verify ArchiveBox URL is correct (e.g., `http://localhost:8000`)
 - Verify username and password are correct
 - Check ArchiveBox logs for auth errors
-- Ensure ArchiveBox `/admin/login/` endpoint is accessible
+- Ensure ArchiveBox `/api/v1/auth/get_api_token` endpoint is accessible
 
 ### History/Bookmarks Not Syncing
 - Open Settings → Debug Logs to check for errors

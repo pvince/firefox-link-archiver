@@ -20,9 +20,9 @@ Support desktop Firefox and Firefox for Android unless a task is explicitly desk
 ## ArchiveBox Integration
 
 - Do not invent ArchiveBox endpoints or authentication flows. Check the official docs first: [ArchiveBox README](https://github.com/ArchiveBox/ArchiveBox) and [ArchiveBox Wiki](https://github.com/ArchiveBox/ArchiveBox/wiki).
-- Target server version for this project is ArchiveBox `v0.7.4`, which does not provide the newer REST token workflow. Keep session-login based submission as the primary path.
+- Target server version for this project is ArchiveBox `v0.9.x` (tested on `0.9.71`). Authenticate by POSTing username/password to `/api/v1/auth/get_api_token` and submit URLs to `/api/v1/cli/add` with a `Bearer` token. The REST API is documented at `<server>/api/v1/docs`. The old `/admin/login/` session-cookie flow is no longer used.
 - Never hardcode the ArchiveBox server URL, credentials, or API tokens. Store them in extension-managed storage and redact them from logs, screenshots, and fixtures.
-- For session-login reliability, persist credentials only in encrypted-at-rest form and use them for automatic re-authentication when a session cookie expires.
+- For reliability, persist credentials only in encrypted-at-rest form and use them to fetch a fresh API token automatically when the stored token expires or is rejected.
 - Assume submitted URLs may be private. Avoid logging full URLs, cookies, headers, or request bodies unless a task explicitly requires secure debugging output.
 
 ## Development Conventions

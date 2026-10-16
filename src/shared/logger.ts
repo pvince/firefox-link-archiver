@@ -22,7 +22,7 @@ export class Logger {
       let s = value;
       s = s.replace(/https?:\/\/[^\s"']+/g, (url) => url.substring(0, 20) + '...');
       s = s.replace(/password[:\s=]+\S+/gi, 'password=***');
-      s = s.replace(/sessionCookie[:\s=]+\S+/gi, 'sessionCookie=***');
+      s = s.replace(/(sessionCookie|apiToken)[:\s=]+\S+/gi, '$1=***');
       s = s.replace(/encryptedPassword[:\s=]+\S+/gi, 'encryptedPassword=***');
       s = s.replace(/authorization[:\s=]+\S+/gi, 'authorization=***');
       return s;

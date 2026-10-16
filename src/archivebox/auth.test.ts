@@ -50,7 +50,7 @@ describe('AuthManager', () => {
     (storage.getConfig as jest.Mock).mockResolvedValue({
       archiveBoxUrl: 'https://archive.example.com',
       username: 'alice',
-      sessionCookie: undefined,
+      apiToken: undefined,
       lastLogin: 0,
       batchInterval: 10000,
       blocklistPatterns: [],
@@ -79,41 +79,42 @@ describe('AuthManager', () => {
   });
 
   test('classifies transient login endpoint failures as network errors', async () => {
-    (globalThis as any).fetch = jest
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: async () => '<html></html>',
-        url: 'https://archive.example.com/admin/login/',
-      })
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 503,
-        statusText: 'Service Unavailable',
-        url: 'https://archive.example.com/admin/login/',
-      });
+    (globalThis as any).fetch = jest.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+    });
 
     await expect(
       manager.login('https://archive.example.com', 'alice', 'pw123')
     ).rejects.toBeInstanceOf(NetworkError);
   });
 
+  test('stores the API token returned by get_api_token', async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true, token: 'tok123' }),
+    });
+    (globalThis as any).fetch = fetchMock;
+
+    const result = await manager.login('https://archive.example.com', 'alice', 'pw123');
+
+    expect(result.token).toBe('tok123');
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'https://archive.example.com/api/v1/auth/get_api_token'
+    );
+    expect(storage.setConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ apiToken: 'tok123' })
+    );
+  });
+
   test('does not downgrade transient re-login failures to invalid-credential state', async () => {
-    (globalThis as any).fetch = jest
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: async () => '<html></html>',
-        url: 'https://archive.example.com/admin/login/',
-      })
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 503,
-        statusText: 'Service Unavailable',
-        url: 'https://archive.example.com/admin/login/',
-      });
+    (globalThis as any).fetch = jest.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+    });
 
     await expect(manager.ensureAuthenticated()).rejects.toBeInstanceOf(NetworkError);
 
@@ -130,7 +131,7 @@ describe('AuthManager', () => {
     expect(storage.clearEncryptedCredential).toHaveBeenCalledTimes(1);
     expect(storage.clearAuthHealth).toHaveBeenCalledTimes(1);
     expect(storage.setConfig).toHaveBeenCalledWith({
-      sessionCookie: undefined,
+      apiToken: undefined,
       lastLogin: undefined,
     });
   });

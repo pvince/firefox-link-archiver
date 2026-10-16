@@ -1,5 +1,5 @@
 /**
- * Session-based authentication for ArchiveBox
+ * API-token authentication for ArchiveBox (REST API v1)
  */
 
 import { storage } from '../shared/storage';
@@ -116,110 +116,48 @@ export class AuthManager {
   }
 
   /**
-   * Fetch the login page and extract the CSRF token via cookie
-   * Django sets a csrftoken cookie on GET which matches the form field value
-   */
-  private async getCsrfToken(loginUrl: string, baseUrl: string): Promise<string> {
-    const response = await fetch(loginUrl, {
-      method: 'GET',
-      credentials: 'include',
-    });
-    if (!response.ok) {
-      throw new NetworkError(`Failed to load login page: ${response.status}`);
-    }
-
-    // Prefer reading the csrftoken cookie that Django sets on GET
-    const cookies = await browser.cookies.getAll({ url: baseUrl, name: 'csrftoken' });
-    if (cookies && cookies.length > 0) {
-      return cookies[0].value;
-    }
-
-    // Fallback: parse the hidden input from the HTML
-    const html = await response.text();
-    const patterns = [
-      /name="csrfmiddlewaretoken"\s+value="([^"]+)"/,
-      /value="([^"]+)"\s+name="csrfmiddlewaretoken"/,
-      /"csrfmiddlewaretoken"[^>]+value="([^"]+)"/,
-    ];
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match && match[1]) return match[1];
-    }
-
-    throw new AuthError('Could not find CSRF token on login page');
-  }
-
-  /**
-   * Attempt to login with credentials and return session cookie
+   * Exchange username/password for an API token via the ArchiveBox REST API
    */
   async login(
     url: string,
     username: string,
     password: string,
     options: LoginOptions = {}
-  ): Promise<{ cookie: string }> {
-    const loginUrl = `${url}/admin/login/`;
+  ): Promise<{ token: string }> {
+    const tokenUrl = `${url}/api/v1/auth/get_api_token`;
 
     try {
-      // Step 1: GET the login page to obtain the CSRF token
-      const csrfToken = await this.getCsrfToken(loginUrl, url);
-
-      // Step 2: POST credentials with the CSRF token
-      const formData = new URLSearchParams();
-      formData.append('username', username);
-      formData.append('password', password);
-      formData.append('csrfmiddlewaretoken', csrfToken);
-      formData.append('next', '/');
-
-      const response = await fetch(loginUrl, {
+      const response = await fetch(tokenUrl, {
         method: 'POST',
-        body: formData.toString(),
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Referer': loginUrl,
-        },
-        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+        credentials: 'omit',
       });
 
-      // Django redirects away from /admin/login/ on successful login.
-      // If we're still on the login page, credentials were wrong.
-      const finalUrl = response.url;
-      const stillOnLogin = finalUrl.includes('/admin/login/');
-
-      if (response.status === 401 || response.status === 403 || (response.ok && stillOnLogin)) {
+      if (response.status === 401 || response.status === 403) {
         throw new AuthError('Invalid username or password');
       }
 
-      if (response.status >= 500) {
+      if (response.status === 404) {
         throw new NetworkError(
-          `ArchiveBox login endpoint returned ${response.status}: ${response.statusText}`
+          'ArchiveBox REST API not found. This extension requires ArchiveBox 0.8 or newer.'
         );
       }
 
-      if (!response.ok && response.status !== 302) {
+      if (!response.ok) {
         throw new NetworkError(
           `Login request failed with status ${response.status}: ${response.statusText}`
         );
       }
 
-      // Read the sessionid cookie that the browser stored automatically
-      // (set-cookie header is not directly accessible via fetch in extensions)
-      const cookies = await browser.cookies.getAll({
-        url,
-        name: 'sessionid',
-      });
-
-      if (!cookies || cookies.length === 0) {
-        throw new AuthError('Login appeared to succeed but no session cookie was set');
+      const data = (await response.json()) as { success?: boolean; token?: string };
+      if (!data.success || !data.token) {
+        throw new AuthError('Invalid username or password');
       }
 
-      const sessionCookie = `sessionid=${cookies[0].value}`;
+      const apiToken = data.token;
 
-      await logger.info('Login successful', {
-        url,
-        username,
-        cookieLength: sessionCookie.length,
-      });
+      await logger.info('Login successful', { url, username });
 
       if (options.persistCredential !== false && password) {
         await this.storeEncryptedCredential(username, password);
@@ -229,7 +167,7 @@ export class AuthManager {
         await storage.setConfig({
           archiveBoxUrl: url,
           username,
-          sessionCookie,
+          apiToken,
           lastLogin: Date.now(),
         });
         await this.updateAuthHealth(AuthHealthStatus.SessionValid, {
@@ -239,7 +177,7 @@ export class AuthManager {
         });
       }
 
-      return { cookie: sessionCookie };
+      return { token: apiToken };
     } catch (err) {
       if (
         err instanceof AuthError ||
@@ -283,7 +221,7 @@ export class AuthManager {
   async isSessionValid(): Promise<boolean> {
     try {
       const config = await storage.getConfig();
-      if (!config.sessionCookie) {
+      if (!config.apiToken) {
         return false;
       }
 
@@ -390,7 +328,7 @@ export class AuthManager {
 
   async invalidateSession(reason: string): Promise<void> {
     await storage.setConfig({
-      sessionCookie: undefined,
+      apiToken: undefined,
       lastLogin: undefined,
     });
     await this.incrementAuthRetry(
@@ -413,13 +351,10 @@ export class AuthManager {
     await this.ensureAuthenticated();
   }
 
-  /**
-   * Get session cookie for requests
-   */
-  async getSessionCookie(): Promise<string> {
+  async getApiToken(): Promise<string> {
     await this.ensureAuthenticated();
     const config = await storage.getConfig();
-    return config.sessionCookie || '';
+    return config.apiToken || '';
   }
 
   /**
@@ -427,7 +362,7 @@ export class AuthManager {
    */
   async logout(): Promise<void> {
     await storage.setConfig({
-      sessionCookie: undefined,
+      apiToken: undefined,
       lastLogin: undefined,
     });
     await storage.clearEncryptedCredential();
