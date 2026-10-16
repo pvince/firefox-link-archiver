@@ -66,23 +66,27 @@ describe('AuthManager', () => {
     (encryptionManager.initialize as jest.Mock).mockResolvedValue(undefined);
     (encryptionManager.decrypt as jest.Mock).mockResolvedValue('pw123');
 
-    (globalThis as any).browser = {
-      cookies: {
-        getAll: jest.fn(({ name }: { name: string }) => {
-          if (name === 'csrftoken') {
-            return Promise.resolve([{ value: 'csrf-token' }]);
-          }
-          return Promise.resolve([]);
-        }),
+    Object.assign(globalThis, {
+      browser: {
+        cookies: {
+          getAll: jest.fn(({ name }: { name: string }) => {
+            if (name === 'csrftoken') {
+              return Promise.resolve([{ value: 'csrf-token' }]);
+            }
+            return Promise.resolve([]);
+          }),
+        },
       },
-    };
+    });
   });
 
   test('classifies transient login endpoint failures as network errors', async () => {
-    (globalThis as any).fetch = jest.fn().mockResolvedValueOnce({
-      ok: false,
-      status: 503,
-      statusText: 'Service Unavailable',
+    Object.assign(globalThis, {
+      fetch: jest.fn().mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        statusText: 'Service Unavailable',
+      }),
     });
 
     await expect(
@@ -96,7 +100,7 @@ describe('AuthManager', () => {
       status: 200,
       json: async () => ({ success: true, token: 'tok123' }),
     });
-    (globalThis as any).fetch = fetchMock;
+    Object.assign(globalThis, { fetch: fetchMock });
 
     const result = await manager.login('https://archive.example.com', 'alice', 'pw123');
 
@@ -110,10 +114,12 @@ describe('AuthManager', () => {
   });
 
   test('does not downgrade transient re-login failures to invalid-credential state', async () => {
-    (globalThis as any).fetch = jest.fn().mockResolvedValueOnce({
-      ok: false,
-      status: 503,
-      statusText: 'Service Unavailable',
+    Object.assign(globalThis, {
+      fetch: jest.fn().mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        statusText: 'Service Unavailable',
+      }),
     });
 
     await expect(manager.ensureAuthenticated()).rejects.toBeInstanceOf(NetworkError);

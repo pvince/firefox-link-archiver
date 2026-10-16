@@ -125,7 +125,7 @@ function validateBlocklistPatterns(
 
     try {
       new RegExp(pattern);
-    } catch (_err) {
+    } catch {
       invalidLines.push(`${index + 1}: ${pattern}`);
     }
   });
@@ -362,8 +362,12 @@ async function syncNow(): Promise<void> {
   try {
     // Get background script and trigger sync
     const bg = await browser.runtime.getBackgroundPage?.();
-    if (bg && typeof (bg as any).processSyncQueue === 'function') {
-      await (bg as any).processSyncQueue();
+    const backgroundPage = bg as
+      | (Window & { processSyncQueue?: () => Promise<void> })
+      | null
+      | undefined;
+    if (typeof backgroundPage?.processSyncQueue === 'function') {
+      await backgroundPage.processSyncQueue();
       showStatus('✓ Sync completed!', 'success');
     } else {
       // Fallback: trigger via background script message

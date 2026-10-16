@@ -13,7 +13,7 @@ export class HistoryCollector {
   async collectNewHistory(): Promise<string[]> {
     try {
       // Guard: check if history API is available
-      if (typeof (globalThis as any).browser?.history === 'undefined') {
+      if (typeof globalThis.browser?.history === 'undefined') {
         await logger.debug('History API not available (likely Android)');
         return [];
       }
@@ -22,7 +22,7 @@ export class HistoryCollector {
       const lastSync = syncState.lastHistorySync || Date.now() - 24 * 60 * 60 * 1000; // Default: last 24 hours
 
       // Query history since last sync
-      const items = await (globalThis as any).browser.history.search({
+      const items = await globalThis.browser.history.search({
         text: '', // Get all URLs
         startTime: lastSync,
         maxResults: 1000, // Reasonable limit
@@ -34,15 +34,12 @@ export class HistoryCollector {
       }
 
       // Extract and normalize URLs
-      const urls = (items as any[])
-        .filter((item: Record<string, unknown>) => {
-          const url = item.url as string | undefined;
-          return url && url.startsWith('http');
-        })
-        .map((item: Record<string, unknown>) => item.url as string);
+      const urls = items.flatMap((item) =>
+        item.url?.startsWith('http') ? [item.url] : []
+      );
 
       // Dedupe
-      const deduped = Array.from(new Set(urls)) as string[];
+      const deduped = Array.from(new Set(urls));
 
       await logger.info('History collected', {
         total: items.length,

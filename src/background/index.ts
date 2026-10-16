@@ -25,7 +25,7 @@ const ALARM_NAME = 'syncQueue';
 const DEFAULT_BATCH_INTERVAL = 10000; // 10 seconds in milliseconds
 
 async function updateAuthBadge(): Promise<void> {
-  if (typeof (globalThis as any).browser?.action?.setBadgeText !== 'function') {
+  if (typeof globalThis.browser?.action?.setBadgeText !== 'function') {
     return;
   }
 
@@ -38,7 +38,7 @@ async function updateAuthBadge(): Promise<void> {
 
   if (needsAttention) {
     await browser.action.setBadgeText({ text: '!' });
-    if (typeof (globalThis as any).browser?.action?.setBadgeBackgroundColor === 'function') {
+    if (typeof globalThis.browser?.action?.setBadgeBackgroundColor === 'function') {
       await browser.action.setBadgeBackgroundColor({ color: '#d32f2f' });
     }
     return;
@@ -73,8 +73,8 @@ async function initialize(): Promise<void> {
 /**
  * Handle history visit event
  */
-async function onHistoryVisited(result: Record<string, unknown>): Promise<void> {
-  const url = result.url as string | undefined;
+async function onHistoryVisited(result: browser.history.HistoryItem): Promise<void> {
+  const url = result.url;
   if (!url || !url.startsWith('http')) {
     return;
   }
@@ -95,9 +95,9 @@ async function onHistoryVisited(result: Record<string, unknown>): Promise<void> 
  */
 async function onBookmarkCreated(
   id: string,
-  bookmark: Record<string, unknown>
+  bookmark: browser.bookmarks.BookmarkTreeNode
 ): Promise<void> {
-  const url = bookmark.url as string | undefined;
+  const url = bookmark.url;
   if (!url) {
     return;
   }
@@ -252,7 +252,7 @@ async function processSyncQueue(): Promise<void> {
 /**
  * Handle alarm (periodic sync)
  */
-async function onAlarm(alarm: Record<string, unknown>): Promise<void> {
+async function onAlarm(alarm: browser.alarms.Alarm): Promise<void> {
   if (alarm.name === ALARM_NAME) {
     await processSyncQueue();
   }
@@ -263,21 +263,21 @@ async function onAlarm(alarm: Record<string, unknown>): Promise<void> {
  */
 function registerListeners(): void {
   // History listener (desktop-only, guarded)
-  if (typeof (globalThis as any).browser?.history !== 'undefined') {
-    (globalThis as any).browser.history.onVisited.addListener(onHistoryVisited as any);
+  if (typeof globalThis.browser?.history !== 'undefined') {
+    globalThis.browser.history.onVisited.addListener(onHistoryVisited);
   }
 
   // Bookmarks listener (desktop-only, guarded)
-  if (typeof (globalThis as any).browser?.bookmarks !== 'undefined') {
-    (globalThis as any).browser.bookmarks.onCreated.addListener(onBookmarkCreated as any);
+  if (typeof globalThis.browser?.bookmarks !== 'undefined') {
+    globalThis.browser.bookmarks.onCreated.addListener(onBookmarkCreated);
   }
 
   // Alarm listener (periodic sync)
-  (globalThis as any).browser.alarms.onAlarm.addListener(onAlarm as any);
+  globalThis.browser.alarms.onAlarm.addListener(onAlarm);
 
   // Runtime message listener for explicit sync requests from UI.
-  if (typeof (globalThis as any).browser?.runtime?.onMessage !== 'undefined') {
-    (globalThis as any).browser.runtime.onMessage.addListener(
+  if (typeof globalThis.browser?.runtime?.onMessage !== 'undefined') {
+    globalThis.browser.runtime.onMessage.addListener(
       (message: Record<string, unknown>) => {
         if (message.action === 'syncQueue') {
           return processSyncQueue().then(() => ({ success: true }));
@@ -302,4 +302,5 @@ main().catch((err) => {
 });
 
 // Expose processSyncQueue for manual trigger from UI
-(globalThis as any).processSyncQueue = processSyncQueue;
+(globalThis as typeof globalThis & { processSyncQueue: typeof processSyncQueue })
+  .processSyncQueue = processSyncQueue;

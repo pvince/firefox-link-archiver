@@ -20,7 +20,7 @@ export function normalizeUrlForMatching(url: string): string {
     const parsed = new URL(url.trim());
     parsed.hash = '';
     return parsed.toString().toLowerCase();
-  } catch (_err) {
+  } catch {
     return url.trim().toLowerCase();
   }
 }
@@ -69,7 +69,7 @@ function compilePatterns(patterns: string[]): CompiledPatterns {
   for (const pattern of patterns) {
     try {
       compiled.push(new RegExp(pattern));
-    } catch (_err) {
+    } catch {
       invalidPatterns.push(pattern);
     }
   }

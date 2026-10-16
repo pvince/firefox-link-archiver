@@ -66,6 +66,26 @@ const flushMicrotasks = async () => {
   await Promise.resolve();
 };
 
+type BackgroundTestBrowser = {
+  action: Record<string, jest.Mock>;
+  alarms: {
+    create: jest.Mock;
+    onAlarm: { addListener: jest.Mock };
+  };
+  runtime: {
+    onMessage: { addListener: jest.Mock };
+  };
+};
+
+let mockBrowser: BackgroundTestBrowser;
+
+async function processSyncQueueForTest(): Promise<void> {
+  const background = globalThis as typeof globalThis & {
+    processSyncQueue: () => Promise<void>;
+  };
+  await background.processSyncQueue();
+}
+
 describe('background processSyncQueue', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -88,7 +108,7 @@ describe('background processSyncQueue', () => {
     (queueManager.dequeueBatch as jest.Mock).mockResolvedValue([]);
     (authManager.ensureAuthenticated as jest.Mock).mockResolvedValue(undefined);
 
-    (globalThis as any).browser = {
+    mockBrowser = {
       action: {},
       alarms: {
         create: jest.fn().mockResolvedValue(undefined),
@@ -102,6 +122,7 @@ describe('background processSyncQueue', () => {
         },
       },
     };
+    Object.assign(globalThis, { browser: mockBrowser });
   });
 
   test('refreshes badge when sync exits early on empty queue', async () => {
@@ -110,10 +131,10 @@ describe('background processSyncQueue', () => {
 
     const setBadgeText = jest.fn().mockResolvedValue(undefined);
     const setBadgeBackgroundColor = jest.fn().mockResolvedValue(undefined);
-    (globalThis as any).browser.action.setBadgeText = setBadgeText;
-    (globalThis as any).browser.action.setBadgeBackgroundColor = setBadgeBackgroundColor;
+    mockBrowser.action.setBadgeText = setBadgeText;
+    mockBrowser.action.setBadgeBackgroundColor = setBadgeBackgroundColor;
 
-    await (globalThis as any).processSyncQueue();
+    await processSyncQueueForTest();
 
     expect(setBadgeText).toHaveBeenCalledWith({ text: '' });
   });
@@ -126,7 +147,7 @@ describe('background processSyncQueue', () => {
     await import('../background/index');
     await flushMicrotasks();
 
-    await (globalThis as any).processSyncQueue();
+    await processSyncQueueForTest();
 
     expect(authManager.ensureAuthenticated).toHaveBeenCalled();
     expect(queueManager.releaseAuthBlockedItems).toHaveBeenCalled();

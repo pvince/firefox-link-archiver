@@ -9,32 +9,34 @@ import { QueueItemStatus } from '../shared/types';
 // Mock browser.storage.local
 const mockStorage: Record<string, unknown> = {};
 
-global.browser = {
-  storage: {
-    local: {
-      get: jest.fn((keys) => {
-        const result: Record<string, unknown> = {};
-        const keyList = Array.isArray(keys) ? keys : [keys];
-        keyList.forEach((key) => {
-          if (key in mockStorage) {
-            result[key] = mockStorage[key];
-          }
-        });
-        return Promise.resolve(result);
-      }),
-      set: jest.fn((items) => {
-        Object.assign(mockStorage, items);
-        return Promise.resolve();
-      }),
-      clear: jest.fn(() => {
-        Object.keys(mockStorage).forEach((key) => {
-          delete mockStorage[key];
-        });
-        return Promise.resolve();
-      }),
+Object.assign(globalThis, {
+  browser: {
+    storage: {
+      local: {
+        get: jest.fn((keys) => {
+          const result: Record<string, unknown> = {};
+          const keyList = Array.isArray(keys) ? keys : [keys];
+          keyList.forEach((key) => {
+            if (key in mockStorage) {
+              result[key] = mockStorage[key];
+            }
+          });
+          return Promise.resolve(result);
+        }),
+        set: jest.fn((items) => {
+          Object.assign(mockStorage, items);
+          return Promise.resolve();
+        }),
+        clear: jest.fn(() => {
+          Object.keys(mockStorage).forEach((key) => {
+            delete mockStorage[key];
+          });
+          return Promise.resolve();
+        }),
+      },
     },
   },
-} as any;
+});
 
 describe('QueueManager', () => {
   let queueManager: QueueManager;

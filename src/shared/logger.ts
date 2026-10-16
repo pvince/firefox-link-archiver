@@ -12,9 +12,13 @@ export class Logger {
 
   constructor() {
     // Check if running in development mode
+    const extensionGlobals = globalThis as typeof globalThis & {
+      chrome: unknown;
+      browser: unknown;
+    };
     this.isDev =
-      typeof (globalThis as any).chrome === 'undefined' &&
-      typeof (globalThis as any).browser !== 'undefined';
+      typeof extensionGlobals.chrome === 'undefined' &&
+      typeof extensionGlobals.browser !== 'undefined';
   }
 
   private redactValue(value: unknown): unknown {

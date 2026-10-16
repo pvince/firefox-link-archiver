@@ -270,7 +270,7 @@ export class AuthManager {
     let storedPassword: string | null;
     try {
       storedPassword = await this.loadStoredPassword(config.username);
-    } catch (err) {
+    } catch {
       await this.incrementAuthRetry(
         AuthHealthStatus.InvalidCredentials,
         'Stored credentials could not be decrypted',

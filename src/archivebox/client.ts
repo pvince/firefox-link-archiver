@@ -143,7 +143,7 @@ export class ArchiveBoxClient {
       // Remove fragment
       urlObj.hash = '';
       return urlObj.toString().toLowerCase();
-    } catch (err) {
+    } catch {
       // If URL is invalid, return original trimmed
       return url.trim().toLowerCase();
     }

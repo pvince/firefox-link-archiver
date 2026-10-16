@@ -13,7 +13,7 @@ export class BookmarksCollector {
   async collectNewBookmarks(): Promise<string[]> {
     try {
       // Guard: check if bookmarks API is available
-      if (typeof (globalThis as any).browser?.bookmarks === 'undefined') {
+      if (typeof globalThis.browser?.bookmarks === 'undefined') {
         await logger.debug('Bookmarks API not available (likely Android)');
         return [];
       }
@@ -22,22 +22,18 @@ export class BookmarksCollector {
       const lastSync = syncState.lastBookmarksSync || 0;
 
       // Get bookmark tree
-      const tree = await (globalThis as any).browser.bookmarks.getTree();
+      const tree = await globalThis.browser.bookmarks.getTree();
 
       // Recursively collect bookmarks created since last sync
       const urls: string[] = [];
-      const collect = (items: Record<string, unknown>[]): void => {
+      const collect = (items: browser.bookmarks.BookmarkTreeNode[]): void => {
         for (const item of items) {
-          const dateAdded = item.dateAdded as number | undefined;
-          const url = item.url as string | undefined;
-          const children = item.children as Record<string, unknown>[] | undefined;
-
-          if (dateAdded && dateAdded > lastSync && url) {
+          if (item.dateAdded && item.dateAdded > lastSync && item.url) {
             // This is a bookmark (has URL) created since last sync
-            urls.push(url);
+            urls.push(item.url);
           }
-          if (children) {
-            collect(children);
+          if (item.children) {
+            collect(item.children);
           }
         }
       };

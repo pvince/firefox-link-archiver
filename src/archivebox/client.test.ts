@@ -49,8 +49,8 @@ describe('ArchiveBoxClient', () => {
     ];
 
     testCases.forEach(({ input, expected }) => {
-      // Use private method via type casting for testing
-      const result = (client as any).normalizeUrl(input);
+      // Use private method through bracket access for testing
+      const result = client['normalizeUrl'](input);
       expect(result).toBe(expected);
     });
   });
@@ -64,7 +64,7 @@ describe('ArchiveBoxClient', () => {
       'https://example.net',
     ];
 
-    const result = (client as any).dedupeUrls(urls);
+    const result = client['dedupeUrls'](urls);
 
     expect(result).toHaveLength(3);
     expect(result).toContain('https://example.com');
@@ -81,8 +81,8 @@ describe('ArchiveBoxClient', () => {
     ];
 
     // This tests that normalization + deduping work together
-    const normalized = urls.map((u) => (client as any).normalizeUrl(u));
-    const deduped = (client as any).dedupeUrls(normalized);
+    const normalized = urls.map((url) => client['normalizeUrl'](url));
+    const deduped = client['dedupeUrls'](normalized);
 
     expect(deduped).toHaveLength(2);
   });
@@ -110,7 +110,7 @@ describe('ArchiveBoxClient', () => {
         json: async () => ({ success: true, errors: [] }),
       });
 
-    (globalThis as any).fetch = fetchMock;
+    Object.assign(globalThis, { fetch: fetchMock });
 
     const result = await client.submitUrls('https://archive.example.com', [
       'https://example.com/article',
@@ -143,7 +143,7 @@ describe('ArchiveBoxClient', () => {
         ok: false,
       });
 
-    (globalThis as any).fetch = fetchMock;
+    Object.assign(globalThis, { fetch: fetchMock });
 
     await expect(
       client.submitUrls('https://archive.example.com', ['https://example.com/article'])
@@ -165,7 +165,7 @@ describe('ArchiveBoxClient', () => {
       statusText: 'Unauthorized',
       ok: false,
     });
-    (globalThis as any).fetch = fetchMock;
+    Object.assign(globalThis, { fetch: fetchMock });
 
     await expect(
       client.submitUrls('https://archive.example.com', ['https://example.com/article'])
