@@ -9,7 +9,7 @@
  * Output: archivebox-autosync-source.zip
  */
 
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -39,7 +39,7 @@ const INCLUDE_DIRS = [
 if (fs.existsSync(OUTPUT)) fs.unlinkSync(OUTPUT);
 
 const output = fs.createWriteStream(OUTPUT);
-const archive = archiver('zip', { zlib: { level: 9 } });
+const archive = new ZipArchive({ zlib: { level: 9 } });
 
 output.on('close', () => {
   const bytes = archive.pointer();

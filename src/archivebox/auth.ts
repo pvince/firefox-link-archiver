@@ -267,7 +267,7 @@ export class AuthManager {
 
     await logger.info('Session expired or missing, re-logging in');
 
-    let storedPassword: string | null = null;
+    let storedPassword: string | null;
     try {
       storedPassword = await this.loadStoredPassword(config.username);
     } catch (err) {

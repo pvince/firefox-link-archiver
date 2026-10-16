@@ -7,7 +7,7 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -29,7 +29,7 @@ async function packageExtension() {
     console.log('📝 Creating XPI package...');
 
     const output = fs.createWriteStream(OUTPUT_FILE);
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    const archive = new ZipArchive({ zlib: { level: 9 } });
 
     return new Promise((resolve, reject) => {
       output.on('close', async () => {
